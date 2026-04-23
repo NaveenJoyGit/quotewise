@@ -1,5 +1,99 @@
 # Changelog
 
+## Milestone 2 — "Seed data & schema" (2026-04-23)
+
+Goal (SPEC §10.2): persistence layer + deterministic pricing core. No LLM. Success criterion: a unit test that starts with `{area_sqft: 1000, surface_type: "new_wall", ...}` and outputs the correct quote total.
+
+### What was done
+
+- **Full database schema (SPEC §3.1)** — SQLAlchemy 2.0 models for all six entities:
+  - `Contractor`, `PricingConfig` (with JSONB `rules` + partial unique index on active config per `(contractor_id, work_type)`), `Session`, `Message`, `Quote`, `AuditLog`
+  - Enums: `WorkType`, `ApprovalMode`, `SessionState`, `MessageDirection`, `MessageType`, `QuoteStatus` — created as native Postgres enum types
+  - All tables: `id UUID PK`, `created_at`/`updated_at` with `server_default=now()` + `onupdate`, money as `Numeric(12,2)`
+- **Alembic setup** — `backend/alembic.ini` (uses `%(here)s` so it runs from any CWD) + hand-written initial migration `0001_initial_schema.py` covering all six tables + enums. Offline SQL (`alembic upgrade head --sql`) verified clean.
+- **Deterministic pricing evaluator (SPEC §2.2, §4.2 — "never ask an LLM to multiply two numbers")**
+  - `app.services.pricing.evaluator.evaluate_quote(rules, slots) -> EvaluatedQuote` — pure function, no I/O
+  - `app.services.pricing.schemas` — pydantic validation of `PricingConfig.rules` (structured modifier grammar: `per_unit_surcharge` + `tax`, discriminated union)
+  - `app.services.pricing.expr` — tiny safe AST evaluator (Name / BinOp `+ - * /` / unary minus / numeric literals only; everything else — calls, attrs, subscripts, `%`, `**` — raises). Honors SPEC §9 prompt-injection-style concerns for any future LLM-supplied expressions.
+  - `app.services.pricing.errors` — typed `MissingSlotError`, `InvalidSlotValueError`, `RateNotFoundError`
+  - All amounts use `Decimal` + `ROUND_HALF_UP` quantized to 2 dp.
+- **Hand-written painting rules** (`seed_rules.PAINTING_RULES`) — 3 paint tiers × 3 surface types = 9 rate rows, extra-coat surcharge, 18% GST, 1 line-item template. Doubles as seed payload and test fixture.
+- **Seed script** (`scripts/seed_data.py`) — idempotent: upserts one dev contractor (`+919999900001` / "QuoteWise Dev Contractor" / slug `dev`) and one active painting `PricingConfig`.
+- **63 new pricing tests; 100% coverage** of `app/services/pricing/*.py` enforced via `pytest-cov --cov-fail-under=100`. All 16 Milestone 1 tests remain green.
+  - SPEC §10.2 success-criterion test (1000 sqft basic new_wall → subtotal ₹14 000, GST ₹2 520, total ₹16 520)
+  - Every rate-table row exercised via parametrized test
+  - Extra-coat surcharge (1 extra, 2 extra, default applied when `coats` omitted)
+  - Every `ModifierCondition` operator (`gt/gte/lt/lte/eq`) — both triggered and not-triggered paths
+  - All error paths: missing required, enum out of options, number below/above min/max, wrong type (bool/str for number, bool/float for integer), wrong type for string, rate not found
+  - `safe_eval` allowed ops (`+ - * / unary-minus`), rejected ops (`% ** call attr subscript`), unknown names, non-numeric names, bool constants
+  - Schema validation: empty rate table, missing base_formula, enum input without options, unknown modifier type, unknown top-level key
+- **Infra** — Postgres 16-alpine added to `docker-compose.yml` (named volume `quotewise_pg_data`, healthcheck). `DATABASE_URL` added to `Settings` and `.env.example`.
+
+### Files added
+
+```
+backend/alembic.ini
+backend/alembic/env.py
+backend/alembic/script.py.mako
+backend/alembic/versions/0001_initial_schema.py
+
+backend/app/db/__init__.py
+backend/app/db/base.py                          # Base + engine + SessionLocal
+backend/app/db/enums.py                         # 6 enums
+backend/app/db/models.py                        # 6 ORM models
+
+backend/app/services/pricing/__init__.py
+backend/app/services/pricing/errors.py
+backend/app/services/pricing/evaluator.py       # pure evaluate_quote()
+backend/app/services/pricing/expr.py            # safe AST expression evaluator
+backend/app/services/pricing/schemas.py         # pydantic rules schema
+backend/app/services/pricing/seed_rules.py      # PAINTING_RULES dict
+
+scripts/seed_data.py                            # idempotent dev seed
+
+backend/tests/test_pricing_evaluator.py
+backend/tests/test_pricing_expr.py
+backend/tests/test_pricing_schemas.py
+```
+
+### Files edited
+
+- `pyproject.toml` — added `sqlalchemy>=2.0`, `alembic>=1.13`, `psycopg[binary]>=3.2`, and dev dep `pytest-cov>=5.0`
+- `docker-compose.yml` — added `postgres:16-alpine` service with named volume + healthcheck
+- `backend/app/core/config.py` — added `database_url` setting
+- `.env.example` — added `DATABASE_URL`
+
+### How to run locally
+
+Unit tests (no external deps):
+```
+uv sync --extra dev
+uv run pytest -q --cov=app.services.pricing --cov-report=term-missing --cov-fail-under=100
+```
+
+Database round-trip (requires Docker Desktop running):
+```
+docker compose up -d postgres
+uv run alembic -c backend/alembic.ini upgrade head
+uv run python scripts/seed_data.py
+uv run python -c "import sys; sys.path.insert(0, 'backend'); from app.db.base import SessionLocal; from app.db.models import Contractor, PricingConfig; s = SessionLocal(); print(s.query(Contractor).one().business_name); print(s.query(PricingConfig).one().rules['base_formula'])"
+```
+Expected: `QuoteWise Dev Contractor` and `area_sqft * rate_per_sqft`.
+
+### Blocked / follow-ups
+
+- **DB round-trip not executed at build time** — Docker Desktop was not running on the dev machine. Migration SQL was verified via `alembic upgrade head --sql`; user should run the round-trip above once Docker is up.
+- **M2 does not wire pricing into the webhook path.** `app/workers/tasks.py` still does the M1 echo. That integration lands in M3.
+
+### What's left (next milestones per SPEC §10)
+
+- **M3 — First AI conversation:** Slot extraction (Gemini Flash), question phrasing, state machine `GREETING → IDENTIFYING_SCOPE → COLLECTING_INPUTS → READY_TO_QUOTE`. Prompt templates under `backend/app/prompts/` per CLAUDE.md. Log every LLM call with template name, token count, latency.
+- **M4 — Quote delivery:** PDF generation, contractor approval via WhatsApp (deterministic keyword match, SPEC §6.2), basic Next.js dashboard.
+- **M5 — Onboarding + rate card ingestion:** Web onboarding, Gemini Pro rate card parsing, `false_ceiling` work type (proves data-driven extensibility).
+- **M6 — Polish + first real contractor.**
+
+---
+
 ## Milestone 1 — "Hello from WhatsApp" (2026-04-23)
 
 Goal (SPEC §10.1): messages flow end-to-end through webhook → queue → worker → WhatsApp sender, no LLM, no pricing. Just plumbing.
@@ -84,8 +178,4 @@ Worker log shows: `[MOCK WA] to=919876543210 body=Got it: hello bot`
 
 ### What's left (next milestones per SPEC §10)
 
-- **M2 — Seed data & schema:** Postgres schema for all entities in SPEC §3.1, seed one contractor, hand-write a painting `PricingConfig`, implement formula evaluator with 100% test coverage (§8.2). No LLM yet.
-- **M3 — First AI conversation:** Slot extraction (Gemini Flash), question phrasing, state machine `GREETING → IDENTIFYING_SCOPE → COLLECTING_INPUTS → READY_TO_QUOTE`. Prompt templates under `backend/app/prompts/` per CLAUDE.md. Log every LLM call with template name, token count, latency.
-- **M4 — Quote delivery:** PDF generation, contractor approval via WhatsApp (deterministic keyword match, SPEC §6.2), basic Next.js dashboard.
-- **M5 — Onboarding + rate card ingestion:** Web onboarding, Gemini Pro rate card parsing, false ceiling work type.
-- **M6 — Polish + first real contractor.**
+See the M2 entry above for the current next-milestone list.

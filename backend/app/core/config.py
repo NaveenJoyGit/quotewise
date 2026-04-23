@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     wa_graph_api_version: str = "v21.0"
 
     redis_url: str = "redis://localhost:6379/0"
+    database_url: str = "postgresql+psycopg://quotewise:quotewise@localhost:5432/quotewise"
 
     @property
     def wa_send_enabled(self) -> bool:
