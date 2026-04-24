@@ -99,11 +99,11 @@ def _resolve_slots(inputs: list[InputDef], slots: dict) -> dict[str, Any]:
             raise MissingSlotError(i.name)
         else:
             continue
-        resolved[i.name] = _validate(i, value)
+        resolved[i.name] = validate_slot_value(i, value)
     return resolved
 
 
-def _validate(i: InputDef, value: Any) -> Any:
+def validate_slot_value(i: InputDef, value: Any) -> Any:
     if i.type == "integer":
         if isinstance(value, bool) or not isinstance(value, int):
             raise InvalidSlotValueError(i.name, value, "expected integer")

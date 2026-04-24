@@ -9,6 +9,8 @@ from app.services.pricing import (
     RateNotFoundError,
     evaluate_quote,
 )
+from app.services.pricing.evaluator import validate_slot_value
+from app.services.pricing.schemas import InputDef
 from app.services.pricing.seed_rules import PAINTING_RULES
 
 
@@ -294,3 +296,28 @@ def test_modifier_condition_missing_field_not_met():
         {"area_sqft": 1000, "surface_type": "new_wall", "coats": 2, "paint_brand_tier": "basic"},
     )
     assert q.subtotal == Decimal("14000.00")
+
+
+# ---------------------------------------------------------------------------
+# validate_slot_value (public surface used by SlotExtractor)
+# ---------------------------------------------------------------------------
+def test_validate_slot_value_number_valid():
+    idef = InputDef(name="area_sqft", type="number", validation={"min": 10, "max": 10000})
+    assert validate_slot_value(idef, 500) == 500
+
+
+def test_validate_slot_value_enum_valid():
+    idef = InputDef(name="surface_type", type="enum", options=["new_wall", "repaint_good_condition"])
+    assert validate_slot_value(idef, "new_wall") == "new_wall"
+
+
+def test_validate_slot_value_enum_invalid():
+    idef = InputDef(name="surface_type", type="enum", options=["new_wall"])
+    with pytest.raises(InvalidSlotValueError):
+        validate_slot_value(idef, "marble")
+
+
+def test_validate_slot_value_number_below_min():
+    idef = InputDef(name="area_sqft", type="number", validation={"min": 10, "max": 10000})
+    with pytest.raises(InvalidSlotValueError):
+        validate_slot_value(idef, 5)

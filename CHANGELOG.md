@@ -1,5 +1,133 @@
 # Changelog
 
+## Milestone 3 — "First AI conversation" (2026-04-24)
+
+Goal (SPEC §10.3): LLM slot extraction, next-question phrasing, state machine `GREETING → IDENTIFYING_SCOPE → COLLECTING_INPUTS → READY_TO_QUOTE`. Work type hardcoded to painting. On `READY_TO_QUOTE`: quote computed and logged as JSON. No PDF (M4).
+
+### What was done
+
+- **Prompt layer** (`backend/app/prompts/`) — Jinja2 loader (`StrictUndefined`, `trim_blocks`) + 3 prompt templates:
+  - `slot_extraction.jinja` — SPEC §4.3 Pattern 1: JSON-only output, explicit schema for missing slots, 2–3 few-shot examples, untrusted-input delimiters (SPEC §9).
+  - `question_phrasing.jinja` — one-question guardrail; passes `slot_def.question_template` as a phrasing baseline.
+  - `greeting.jinja` — short greeting + scope opener; no price mentions.
+
+- **LLM abstraction** (`backend/app/services/llm/`) — SPEC §4.4 "abstract all LLM calls behind a single `LLMClient` interface":
+  - `base.py` — `LLMClient(ABC)` with `extract_json` / `generate_text`. Every call logs `event_type=llm.call`, template name, model, input/output tokens, latency (SPEC §8.3).
+  - `mock.py` — `MockLLMClient`: canned dict/str/callable responses keyed by template name. Still renders the Jinja template (template errors surface in tests). Mirrors the `WhatsAppClient` mock-or-real pattern from M1.
+  - `vertex.py` — `VertexGeminiClient`: lazy-imports `vertexai` (tests don't need the SDK). Uses `response_mime_type="application/json"` for structured extraction. Splits templates on `{# SYSTEM #}/{# USER #}` markers for Gemini's `system_instruction` (SPEC §9 role separation).
+  - `factory.py` — returns `VertexGeminiClient` when `LLM_PROVIDER=vertex` + `GCP_PROJECT_ID` set; otherwise `MockLLMClient` (with a warning log if vertex was requested but creds absent).
+
+- **State machine** (`backend/app/services/conversation/`) — SPEC §5.2 strategy pattern:
+  - `handlers/__init__.py` — `StateHandler(ABC)`, `HANDLERS` registry, `get_handler()`. Deferred states raise `UnknownStateError` → engine sends stub reply.
+  - `handlers/greeting.py` — LLM-generated greeting → `IDENTIFYING_SCOPE`.
+  - `handlers/identifying_scope.py` — hardcodes `WorkType.painting`; derives `missing_slots` from `PricingRules.inputs` (required + no default); phrases first question via `QuestionPhraser`.
+  - `handlers/collecting_inputs.py` — runs `SlotExtractor`; if all slots filled returns empty `outbound_text` to trigger chained dispatch; otherwise phrases next question.
+  - `handlers/ready_to_quote.py` — calls `evaluate_quote`, logs `event_type=quote.generated` (SPEC §10.3 success criterion), returns buyer ack.
+
+- **Support services**:
+  - `slot_extractor.py` — `SlotExtractor`: LLM → validated dict. Coerces numeric strings; validates with `validate_slot_value` (reuses pricing code); drops invalid values with `slot.extraction.invalid` log.
+  - `question_phraser.py` — `QuestionPhraser`: falls back to `slot_def.question_template` on empty/error LLM response (a turn never fails due to phrasing hiccup).
+  - `session_repo.py` — DB helpers: `resolve_contractor` (first contractor — M5 debt), `find_or_create_session` (72h TTL), `load_active_pricing_rules`, `log_message`, `apply_handler_result`.
+
+- **`ConversationEngine`** (`engine.py`) — orchestrator: non-text → polite refusal; resolve contractor + session; log inbound `Message`; dispatch to handler; apply result; chained re-dispatch (max 2 iterations) when `outbound_text == ""`; log outbound `Message`; `db.commit()`.
+
+- **Worker rewrite** (`backend/app/workers/tasks.py`) — replaces M1 echo stub. Opens `SessionLocal`, creates `ConversationEngine + WhatsAppClient`, routes each inbound message through `engine.process()`. Catches per-message exceptions so one bad message doesn't abort the batch. DB always closed in `finally`.
+
+- **`_validate` → `validate_slot_value`** in `pricing/evaluator.py` — made public so `SlotExtractor` can reuse it without duplicating validation logic (SPEC §8.1 DRY).
+
+- **Config additions** (`app/core/config.py` + `.env.example`) — `LLM_PROVIDER`, `GCP_PROJECT_ID`, `GCP_LOCATION`, `VERTEX_MODEL_FLASH`, `VERTEX_MODEL_PRO`, `LLM_CALL_TIMEOUT_SECONDS`, `SESSION_TTL_HOURS`.
+
+- **143 tests passing, 0 failures.** Pricing stays at 100% line coverage. `slot_extractor`, `engine`, all handlers, `llm/base`, `llm/mock` at 100%. `session_repo` intentionally low (DB-backed; no test-DB harness — consistent with M2 approach; deferred to M4 with `testcontainers`). `vertex.py` 0% per-commit (integration-only; `@pytest.mark.integration` suite runs against real Vertex nightly). Retired `test_worker_echo.py` (M1 echo contract superseded).
+
+### Files added
+
+```
+backend/app/prompts/__init__.py
+backend/app/prompts/loader.py
+backend/app/prompts/greeting.jinja
+backend/app/prompts/question_phrasing.jinja
+backend/app/prompts/slot_extraction.jinja
+
+backend/app/services/llm/__init__.py
+backend/app/services/llm/base.py
+backend/app/services/llm/mock.py
+backend/app/services/llm/vertex.py
+backend/app/services/llm/factory.py
+
+backend/app/services/conversation/__init__.py
+backend/app/services/conversation/types.py
+backend/app/services/conversation/engine.py
+backend/app/services/conversation/slot_extractor.py
+backend/app/services/conversation/question_phraser.py
+backend/app/services/conversation/session_repo.py
+backend/app/services/conversation/handlers/__init__.py
+backend/app/services/conversation/handlers/greeting.py
+backend/app/services/conversation/handlers/identifying_scope.py
+backend/app/services/conversation/handlers/collecting_inputs.py
+backend/app/services/conversation/handlers/ready_to_quote.py
+
+backend/tests/test_prompt_loader.py
+backend/tests/test_llm_mock.py
+backend/tests/test_llm_factory.py
+backend/tests/test_slot_extractor.py
+backend/tests/test_question_phraser.py
+backend/tests/test_handlers.py
+backend/tests/test_conversation_engine.py
+backend/tests/test_worker_task_m3.py
+```
+
+### Files edited
+
+- `pyproject.toml` — added `jinja2>=3.1`, `google-cloud-aiplatform>=1.70`
+- `backend/app/core/config.py` — added 7 LLM + session config fields + `llm_vertex_enabled` property
+- `.env.example` — added LLM and session TTL section
+- `backend/tests/conftest.py` — added `LLM_PROVIDER=mock` default
+- `backend/app/workers/tasks.py` — **rewritten**: M1 echo → M3 conversation engine
+- `backend/app/services/pricing/evaluator.py` — `_validate` renamed to `validate_slot_value` (public)
+- `backend/tests/test_pricing_evaluator.py` — added 4 `validate_slot_value` tests; pricing coverage stays 100%
+- `CHANGELOG.md` — this entry
+
+### Files deleted
+
+- `backend/tests/test_worker_echo.py` — M1 echo contract retired (replaced by `test_worker_task_m3.py`)
+
+### How to run locally
+
+Unit tests (no external deps — runs in < 1s):
+```
+uv sync --extra dev
+uv run pytest backend/tests -q --cov=app.services --cov-report=term-missing
+```
+
+End-to-end with mock LLM (no Vertex creds needed):
+```
+docker compose up -d postgres redis
+uv run alembic -c backend/alembic.ini upgrade head
+uv run python scripts/seed_data.py
+uv run uvicorn app.main:app --app-dir backend          # terminal 1
+uv run celery -A app.workers.celery_app worker -l info --workdir backend  # terminal 2
+
+python scripts/simulate_conversation.py "hello"
+python scripts/simulate_conversation.py "1000 sqft new wall, premium, 2 coats"
+```
+Worker log should contain `event_type=quote.generated` with `subtotal=22000.00, gst_amount=3960.00, total=25960.00`.
+
+End-to-end with real Vertex AI:
+```
+export LLM_PROVIDER=vertex GCP_PROJECT_ID=<your-project>
+gcloud auth application-default login
+# restart worker — natural language now flows through Gemini Flash
+```
+
+### What's next (M4 per SPEC §10.4)
+
+- PDF generation from quote data
+- Contractor approval via WhatsApp ("approve"/"reject" keyword match, SPEC §6.2)
+- Approved quote PDF delivered to buyer
+- Basic Next.js contractor dashboard (read-only quote history)
+
+---
+
 ## Milestone 2 — "Seed data & schema" (2026-04-23)
 
 Goal (SPEC §10.2): persistence layer + deterministic pricing core. No LLM. Success criterion: a unit test that starts with `{area_sqft: 1000, surface_type: "new_wall", ...}` and outputs the correct quote total.

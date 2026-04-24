@@ -25,9 +25,24 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     database_url: str = "postgresql+psycopg://quotewise:quotewise@localhost:5432/quotewise"
 
+    # --- LLM ---
+    llm_provider: Literal["mock", "vertex"] = "mock"
+    gcp_project_id: str = Field(default="", description="GCP project for Vertex AI")
+    gcp_location: str = "asia-south1"
+    vertex_model_flash: str = "gemini-2.5-flash"
+    vertex_model_pro: str = "gemini-2.5-pro"
+    llm_call_timeout_seconds: int = 20
+
+    # --- Session ---
+    session_ttl_hours: int = 72
+
     @property
     def wa_send_enabled(self) -> bool:
         return bool(self.wa_access_token and self.wa_phone_number_id)
+
+    @property
+    def llm_vertex_enabled(self) -> bool:
+        return self.llm_provider == "vertex" and bool(self.gcp_project_id)
 
 
 @lru_cache

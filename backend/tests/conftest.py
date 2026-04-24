@@ -4,7 +4,9 @@ import os
 os.environ.setdefault("APP_ENV", "test")
 os.environ.setdefault("WA_VERIFY_TOKEN", "test-verify-token")
 os.environ.setdefault("WA_APP_SECRET", "test-app-secret")
-# Leave WA_ACCESS_TOKEN empty → client runs in mock mode (no network).
+# Leave WA_ACCESS_TOKEN empty → WA client runs in mock mode (no network).
+# Leave LLM_PROVIDER=mock → LLM client never hits Vertex in tests.
+os.environ.setdefault("LLM_PROVIDER", "mock")
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
