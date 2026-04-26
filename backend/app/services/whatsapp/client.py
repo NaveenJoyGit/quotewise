@@ -52,3 +52,38 @@ class WhatsAppClient:
         finally:
             if self._http is None:
                 client.close()
+
+    def send_document(
+        self, to: str, document_url: str, filename: str, caption: str = ""
+    ) -> dict[str, Any]:
+        if not self._settings.wa_send_enabled:
+            logger.info(
+                "whatsapp.send_document.mock",
+                extra={"event_type": "whatsapp.send_document.mock"},
+            )
+            logger.info("[MOCK WA] send_document to=%s filename=%s url=%s", to, filename, document_url)
+            return {"mock": True, "to": to, "filename": filename}
+
+        url = (
+            f"https://graph.facebook.com/{self._settings.wa_graph_api_version}"
+            f"/{self._settings.wa_phone_number_id}/messages"
+        )
+        headers = {
+            "Authorization": f"Bearer {self._settings.wa_access_token}",
+            "Content-Type": "application/json",
+        }
+        body_payload = {
+            "messaging_product": "whatsapp",
+            "to": to,
+            "type": "document",
+            "document": {"link": document_url, "filename": filename, "caption": caption},
+        }
+
+        client = self._http or httpx.Client(timeout=10.0)
+        try:
+            resp = client.post(url, headers=headers, json=body_payload)
+            resp.raise_for_status()
+            return resp.json()
+        finally:
+            if self._http is None:
+                client.close()

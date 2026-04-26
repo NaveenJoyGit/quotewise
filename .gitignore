@@ -32,3 +32,6 @@ env/
 # Logs
 *.log
 logs/
+
+# Generated PDFs
+data/pdfs/

@@ -209,8 +209,47 @@ def test_logs_both_inbound_and_outbound_messages(patched_repo):
 # Tests: unknown state
 # ---------------------------------------------------------------------------
 
-def test_unknown_state_returns_stub_message(patched_repo):
-    patched_repo.find_or_create_session.return_value = _make_session(SessionState.awaiting_approval)
+def test_pending_quote_snapshot_set_after_ready_to_quote(patched_repo, caplog):
+    """Engine exposes pending_quote_snapshot for the task layer to persist the quote."""
+    session = _make_session(
+        SessionState.collecting_inputs,
+        collected={"area_sqft": 1000, "surface_type": "new_wall"},
+        missing=["paint_brand_tier"],
+        work_type=WorkType.painting,
+    )
+    patched_repo.find_or_create_session.return_value = session
+
+    def apply_result(session, new_state, **kwargs):
+        session.state = new_state
+        if kwargs.get("collected_slots_update"):
+            session.collected_slots = {**session.collected_slots, **kwargs["collected_slots_update"]}
+        if kwargs.get("missing_slots") is not None:
+            session.missing_slots = kwargs["missing_slots"]
+
+    import app.services.conversation.engine as engine_mod
+    engine_mod.session_repo.apply_handler_result = apply_result
+
+    llm = MockLLMClient(responses={"slot_extraction": {"paint_brand_tier": "premium"}})
+    engine, _ = _make_engine(llm=llm)
+
+    with caplog.at_level(logging.INFO):
+        engine.process(_inbound("premium paint"))
+
+    assert engine.pending_quote_snapshot is not None
+    assert "total" in engine.pending_quote_snapshot
+    assert engine.last_session is not None
+
+
+def test_last_session_is_none_for_non_text(patched_repo):
     engine, _ = _make_engine()
-    result = engine.process(_inbound("approve"))
+    engine.process(_inbound(mtype="voice"))
+    assert engine.last_session is None
+    assert engine.pending_quote_snapshot is None
+
+
+def test_unknown_state_returns_stub_message(patched_repo):
+    # 'closed' has no registered handler and triggers the fallback stub reply.
+    patched_repo.find_or_create_session.return_value = _make_session(SessionState.closed)
+    engine, _ = _make_engine()
+    result = engine.process(_inbound("hello"))
     assert "session" in result.lower() or "conversation" in result.lower()

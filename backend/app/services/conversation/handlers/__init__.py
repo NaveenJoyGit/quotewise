@@ -29,9 +29,11 @@ class UnknownStateError(Exception):
 
 
 def _build_registry() -> dict[SessionState, StateHandler]:
+    from app.services.conversation.handlers.awaiting_approval import AwaitingApprovalHandler
     from app.services.conversation.handlers.collecting_inputs import CollectingInputsHandler
     from app.services.conversation.handlers.greeting import GreetingHandler
     from app.services.conversation.handlers.identifying_scope import IdentifyingScopeHandler
+    from app.services.conversation.handlers.quote_delivered import QuoteDeliveredHandler
     from app.services.conversation.handlers.ready_to_quote import ReadyToQuoteHandler
 
     return {
@@ -39,6 +41,8 @@ def _build_registry() -> dict[SessionState, StateHandler]:
         SessionState.identifying_scope: IdentifyingScopeHandler(),
         SessionState.collecting_inputs: CollectingInputsHandler(),
         SessionState.ready_to_quote: ReadyToQuoteHandler(),
+        SessionState.awaiting_approval: AwaitingApprovalHandler(),
+        SessionState.quote_delivered: QuoteDeliveredHandler(),
     }
 
 

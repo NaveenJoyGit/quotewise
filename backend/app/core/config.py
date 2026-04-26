@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     # --- Session ---
     session_ttl_hours: int = 72
 
+    # --- PDF & Quote delivery ---
+    pdf_storage_dir: str = "data/pdfs"
+    pdf_base_url: str = "http://localhost:8000"
+    quote_validity_days: int = 30
+
     @property
     def wa_send_enabled(self) -> bool:
         return bool(self.wa_access_token and self.wa_phone_number_id)

@@ -7,13 +7,14 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy.orm import Session as DBSession
 
-from app.db.enums import MessageDirection, MessageType, SessionState, WorkType
-from app.db.models import Contractor, Message, PricingConfig
+from app.db.enums import MessageDirection, MessageType, QuoteStatus, SessionState, WorkType
+from app.db.models import Contractor, Message, PricingConfig, Quote
 from app.db.models import Session as SessionModel
 from app.services.whatsapp.payload import InboundMessage
 
@@ -115,6 +116,92 @@ def log_message(
     )
     db.add(msg)
     return msg
+
+
+def load_active_pricing_config(
+    db: DBSession,
+    contractor_id: uuid.UUID,
+    work_type: WorkType,
+) -> PricingConfig:
+    config = (
+        db.query(PricingConfig)
+        .filter(
+            PricingConfig.contractor_id == contractor_id,
+            PricingConfig.work_type == work_type,
+            PricingConfig.is_active == True,  # noqa: E712
+        )
+        .first()
+    )
+    if config is None:
+        raise RuntimeError(
+            f"No active PricingConfig for contractor {contractor_id} / {work_type}"
+        )
+    return config
+
+
+def create_quote(
+    db: DBSession,
+    session: SessionModel,
+    contractor: Contractor,
+    snapshot: dict[str, Any],
+    pricing_config_version: int,
+    validity_days: int = 30,
+) -> Quote:
+    """Persist a Quote row from an EvaluatedQuote snapshot. Status → pending_approval."""
+    from app.db.enums import WorkType as WT
+
+    work_type = session.work_type or WT.painting
+    line_items = snapshot.get("line_items", [])
+    # Snapshots from EvaluatedQuote use Decimal-serialised strings; normalise to str for JSONB.
+    serialised_items = [
+        {k: str(v) if isinstance(v, Decimal) else v for k, v in item.items()}
+        for item in line_items
+    ]
+
+    quote = Quote(
+        session_id=session.id,
+        contractor_id=contractor.id,
+        buyer_phone=session.buyer_phone,
+        work_type=work_type,
+        line_items=serialised_items,
+        subtotal=Decimal(str(snapshot["subtotal"])),
+        gst_amount=Decimal(str(snapshot["gst_amount"])),
+        total=Decimal(str(snapshot["total"])),
+        confidence_score=float(snapshot.get("confidence_score", 1.0)),
+        status=QuoteStatus.pending_approval,
+        validity_date=date.today() + timedelta(days=validity_days),
+        pricing_config_version=pricing_config_version,
+    )
+    db.add(quote)
+    db.flush()
+    logger.info(
+        "quote.persisted",
+        extra={
+            "event_type": "quote.persisted",
+            "quote_id": str(quote.id),
+            "session_id": str(session.id),
+            "total": str(quote.total),
+        },
+    )
+    return quote
+
+
+def update_quote_pdf_url(db: DBSession, quote: Quote, pdf_url: str) -> None:
+    quote.pdf_url = pdf_url
+
+
+def find_pending_quote_for_contractor(
+    db: DBSession, contractor_id: uuid.UUID
+) -> Quote | None:
+    return (
+        db.query(Quote)
+        .filter(
+            Quote.contractor_id == contractor_id,
+            Quote.status == QuoteStatus.pending_approval,
+        )
+        .order_by(Quote.created_at.asc())
+        .first()
+    )
 
 
 def apply_handler_result(

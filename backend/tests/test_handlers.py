@@ -10,9 +10,11 @@ from decimal import Decimal
 import pytest
 
 from app.db.enums import SessionState, WorkType
+from app.services.conversation.handlers.awaiting_approval import AwaitingApprovalHandler
 from app.services.conversation.handlers.collecting_inputs import CollectingInputsHandler
 from app.services.conversation.handlers.greeting import GreetingHandler
 from app.services.conversation.handlers.identifying_scope import IdentifyingScopeHandler
+from app.services.conversation.handlers.quote_delivered import QuoteDeliveredHandler
 from app.services.conversation.handlers.ready_to_quote import ReadyToQuoteHandler
 from app.services.conversation.types import HandlerDeps
 from app.services.llm.mock import MockLLMClient
@@ -225,11 +227,89 @@ class TestReadyToQuoteHandler:
         result = handler.handle(session, _inbound(), _deps())
         assert "contractor" in result.outbound_text.lower()
 
-    def test_state_stays_ready_to_quote(self):
+    def test_quote_snapshot_is_set(self):
         session = _session(
             state=SessionState.ready_to_quote,
             collected_slots=_FULL_SLOTS,
         )
         handler = ReadyToQuoteHandler()
         result = handler.handle(session, _inbound(), _deps())
-        assert result.new_state == SessionState.ready_to_quote
+        assert result.quote_snapshot is not None
+        assert "total" in result.quote_snapshot
+
+    def test_state_transitions_to_awaiting_approval(self):
+        session = _session(
+            state=SessionState.ready_to_quote,
+            collected_slots=_FULL_SLOTS,
+        )
+        handler = ReadyToQuoteHandler()
+        result = handler.handle(session, _inbound(), _deps())
+        assert result.new_state == SessionState.awaiting_approval
+
+
+# ---------------------------------------------------------------------------
+# AwaitingApprovalHandler
+# ---------------------------------------------------------------------------
+
+class TestAwaitingApprovalHandler:
+    def test_returns_hold_message(self):
+        handler = AwaitingApprovalHandler()
+        result = handler.handle(
+            _session(state=SessionState.awaiting_approval),
+            _inbound("anything"),
+            _deps(),
+        )
+        assert len(result.outbound_text) > 0
+        assert "contractor" in result.outbound_text.lower() or "reviewed" in result.outbound_text.lower()
+
+    def test_state_stays_awaiting_approval(self):
+        handler = AwaitingApprovalHandler()
+        result = handler.handle(
+            _session(state=SessionState.awaiting_approval),
+            _inbound("are you there?"),
+            _deps(),
+        )
+        assert result.new_state == SessionState.awaiting_approval
+
+    def test_no_quote_snapshot(self):
+        handler = AwaitingApprovalHandler()
+        result = handler.handle(
+            _session(state=SessionState.awaiting_approval),
+            _inbound(),
+            _deps(),
+        )
+        assert result.quote_snapshot is None
+
+
+# ---------------------------------------------------------------------------
+# QuoteDeliveredHandler
+# ---------------------------------------------------------------------------
+
+class TestQuoteDeliveredHandler:
+    def test_returns_delivered_message(self):
+        handler = QuoteDeliveredHandler()
+        result = handler.handle(
+            _session(state=SessionState.quote_delivered),
+            _inbound("thanks"),
+            _deps(),
+        )
+        assert len(result.outbound_text) > 0
+        assert "quote" in result.outbound_text.lower()
+
+    def test_state_stays_quote_delivered(self):
+        handler = QuoteDeliveredHandler()
+        result = handler.handle(
+            _session(state=SessionState.quote_delivered),
+            _inbound("hello again"),
+            _deps(),
+        )
+        assert result.new_state == SessionState.quote_delivered
+
+    def test_no_quote_snapshot(self):
+        handler = QuoteDeliveredHandler()
+        result = handler.handle(
+            _session(state=SessionState.quote_delivered),
+            _inbound(),
+            _deps(),
+        )
+        assert result.quote_snapshot is None

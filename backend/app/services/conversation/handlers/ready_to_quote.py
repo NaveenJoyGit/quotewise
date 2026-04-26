@@ -40,7 +40,7 @@ class ReadyToQuoteHandler(StateHandler):
         )
 
         return HandlerResult(
-            new_state=SessionState.ready_to_quote,
+            new_state=SessionState.awaiting_approval,
             outbound_text=_BUYER_ACK,
             quote_snapshot=snapshot,
         )

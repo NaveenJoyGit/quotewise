@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from sqlalchemy.orm import Session as DBSession
 
@@ -45,9 +45,15 @@ class ConversationEngine:
         self._llm = llm
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._settings = settings or get_settings()
+        # Populated after process() when a quote is generated; read by the task layer.
+        self.pending_quote_snapshot: dict[str, Any] | None = None
+        self.last_session: SessionModel | None = None
 
     def process(self, inbound: InboundMessage) -> str | None:
         """Handle one inbound message; return the text to send back to the buyer."""
+        self.pending_quote_snapshot = None
+        self.last_session = None
+
         if inbound.message_type != "text":
             logger.info(
                 "message.non_text",
@@ -68,6 +74,7 @@ class ConversationEngine:
             now,
             self._settings.session_ttl_hours,
         )
+        self.last_session = session
 
         session_repo.log_message(
             self._db,
@@ -104,6 +111,9 @@ class ConversationEngine:
             )
 
             result: HandlerResult = handler.handle(session, inbound, deps)
+
+            if result.quote_snapshot is not None:
+                self.pending_quote_snapshot = result.quote_snapshot
 
             session_repo.apply_handler_result(
                 session,

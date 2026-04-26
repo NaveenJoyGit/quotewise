@@ -1,5 +1,140 @@
 # Changelog
 
+## Milestone 4 — "Quote delivery" (2026-04-25)
+
+Goal (SPEC §10.4): PDF generation, contractor approval via WhatsApp keyword match, approved PDF delivered to buyer, read-only Next.js contractor dashboard.
+
+**Success criterion:** Complete flow — buyer messages → AI collects scope → contractor approves via WhatsApp → buyer receives PDF.
+
+### What was done
+
+- **State machine fixes** — `ReadyToQuoteHandler` now transitions to `AWAITING_APPROVAL` (was incorrectly staying in `READY_TO_QUOTE`). Two new handlers registered:
+  - `AwaitingApprovalHandler` — buyer messages while contractor reviews get a holding reply; state unchanged.
+  - `QuoteDeliveredHandler` — buyer messages after PDF is sent get a "check above" reply; state unchanged.
+
+- **Engine transient attributes** (`engine.py`) — `ConversationEngine.process()` return type unchanged (`str | None`). Two new instance attrs set per call:
+  - `pending_quote_snapshot: dict | None` — populated when a handler returns a quote snapshot.
+  - `last_session: SessionModel | None` — populated after `find_or_create_session`. Task layer reads these to trigger quote persistence + contractor notification.
+
+- **Quote persistence** (`session_repo.py`) — 4 new helpers: `load_active_pricing_config`, `create_quote`, `update_quote_pdf_url`, `find_pending_quote_for_contractor`. `create_quote` writes a `Quote` row at `status=pending_approval` immediately after the pricing evaluation, before notifying the contractor.
+
+- **Approval keyword parser** (`services/approval/keywords.py`) — Pure `parse_approval_keyword()` with deterministic regex (SPEC §6.2 — never LLM). Approve patterns run before reject so "approve or cancel" → approve. Word boundaries prevent "cannot" matching "no".
+
+- **ApprovalService** (`services/approval/service.py`) — Handles contractor's WhatsApp reply: keyword parse → find pending quote → approve (generate PDF + send_document to buyer + set `status=sent` + session → `QUOTE_DELIVERED`) or reject (send rejection to buyer + session → `CLOSED`). Logs `AuditLog` entries for both actions.
+
+- **PDF service** (`services/pdf/service.py`) — `PdfService.generate(quote, contractor)` renders `quote_template.html` via Jinja2 then WeasyPrint (`HTML(string=…).write_pdf()`). Saves to `data/pdfs/quote_{id}.pdf`, returns public URL. Accepts injectable `_html_renderer` for tests (native WeasyPrint deps not required in unit tests). Buyer phone masked to last 4 digits in template (SPEC §9 PII).
+
+- **WhatsApp `send_document`** (`services/whatsapp/client.py`) — Meta Graph API document message. Mock mode logs `[MOCK WA] send_document` and returns stub.
+
+- **Task layer rewrite** (`workers/tasks.py`) — Contractor phone → `ApprovalService`; buyer phone → `ConversationEngine`. After engine returns, if `pending_quote_snapshot` is set, `_handle_quote_ready` persists the Quote, commits, then sends contractor notification via `send_text`. Per-message exceptions still caught and logged; DB always closed in `finally`.
+
+- **Static file serving** (`main.py`) — `StaticFiles` mounted at `/pdfs`; directory auto-created on startup. Quotes API router registered at `/api/v1/quotes`.
+
+- **Quotes API** (`api/quotes.py`) — `GET /api/v1/quotes` returns last 50 quotes for the active contractor, newest first. Optional `?status=` filter. `QuoteResponse` Pydantic model serialises all Quote fields.
+
+- **Next.js contractor dashboard** (`frontend/`) — Next.js 14 App Router + Tailwind. Server component fetches quotes from `NEXT_PUBLIC_BACKEND_URL`. Quotes table with columns: Date, Buyer (masked), Work Type, Subtotal, GST, Total, Status (colour-coded badge), PDF link. Graceful error state when backend unreachable.
+
+- **Config additions** — `PDF_STORAGE_DIR` (default `data/pdfs`), `PDF_BASE_URL` (default `http://localhost:8000`), `QUOTE_VALIDITY_DAYS` (default 30).
+
+- **No new Alembic migration** — All schema fields (`pdf_url`, `approved_at`, `sent_at`, `awaiting_approval`/`quote_delivered` session states) already existed in the 0001 migration.
+
+- **224 tests passing, 0 failures.** Pricing stays at 100% line coverage. New modules `approval/keywords.py`, `approval/service.py`, all handlers at 100%. Engine at 100%. `session_repo` intentionally low (DB-backed, no test-DB harness — consistent with M2/M3 approach).
+
+### Files added
+
+```
+backend/app/services/approval/__init__.py
+backend/app/services/approval/keywords.py
+backend/app/services/approval/service.py
+
+backend/app/services/pdf/__init__.py
+backend/app/services/pdf/service.py
+backend/app/services/pdf/quote_template.html
+
+backend/app/services/conversation/handlers/awaiting_approval.py
+backend/app/services/conversation/handlers/quote_delivered.py
+
+backend/app/api/quotes.py
+
+backend/tests/test_approval_keywords.py
+backend/tests/test_approval_service.py
+backend/tests/test_pdf_service.py
+backend/tests/test_quotes_api.py
+backend/tests/test_worker_task_m4.py
+
+frontend/package.json
+frontend/tsconfig.json
+frontend/next.config.ts
+frontend/tailwind.config.ts
+frontend/postcss.config.js
+frontend/app/globals.css
+frontend/app/layout.tsx
+frontend/app/page.tsx
+frontend/app/quotes/page.tsx
+frontend/lib/api.ts
+```
+
+### Files edited
+
+- `backend/app/services/conversation/handlers/ready_to_quote.py` — `new_state` → `SessionState.awaiting_approval`
+- `backend/app/services/conversation/handlers/__init__.py` — registered `AwaitingApprovalHandler`, `QuoteDeliveredHandler`
+- `backend/app/services/conversation/engine.py` — added `pending_quote_snapshot`, `last_session` attrs
+- `backend/app/services/conversation/session_repo.py` — added 4 new helpers
+- `backend/app/services/whatsapp/client.py` — added `send_document()`
+- `backend/app/core/config.py` — added PDF + quote validity settings
+- `backend/app/workers/tasks.py` — **rewritten**: contractor routing + `_handle_quote_ready` + `_format_contractor_notification`
+- `backend/app/main.py` — StaticFiles mount, quotes router
+- `pyproject.toml` — added `weasyprint>=62`
+- `.env.example` — added PDF config section
+- `.gitignore` — added `data/pdfs/`
+- `backend/tests/test_handlers.py` — updated `ReadyToQuoteHandler` assertion; added `AwaitingApprovalHandler` + `QuoteDeliveredHandler` tests
+- `backend/tests/test_conversation_engine.py` — updated unknown-state test; added `pending_quote_snapshot` test
+- `CHANGELOG.md` — this entry
+
+### How to run locally
+
+Unit tests (no external deps — runs in < 1s):
+```
+uv sync --extra dev
+uv run pytest backend/tests -q --cov=app.services --cov=app.api --cov-report=term-missing
+```
+
+End-to-end with mock LLM (no Vertex or Meta creds needed):
+```
+docker compose up -d postgres redis
+uv run alembic -c backend/alembic.ini upgrade head
+uv run python scripts/seed_data.py
+uv run uvicorn app.main:app --app-dir backend          # terminal 1
+uv run celery -A app.workers.celery_app worker -l info --workdir backend  # terminal 2
+
+# Buyer conversation
+python scripts/simulate_conversation.py "hello"
+python scripts/simulate_conversation.py "1000 sqft new wall, premium paint, 2 coats"
+# Worker log shows event_type=quote.generated + contractor notification text
+
+# Contractor approves (seed contractor phone = 919999900001)
+python scripts/simulate_conversation.py --from 919999900001 "approve"
+# Worker log shows quote.approved, pdf.generated, send_document to buyer
+
+# Check quotes API
+curl http://localhost:8000/api/v1/quotes | python -m json.tool
+```
+
+Dashboard (read-only quote history):
+```
+cd frontend && npm install && npm run dev   # visit http://localhost:3000/quotes
+```
+
+### What's next (M5 per SPEC §10.5)
+
+- Web onboarding page (3-step contractor signup)
+- File upload + Gemini Pro parsing of rate cards into PricingConfig
+- Preview UI for contractor to correct parsed schema
+- False ceiling work type (proves data-driven extensibility — all M4 code already supports it)
+- `testcontainers`-backed DB tests for `session_repo`
+
+---
+
 ## Milestone 3 — "First AI conversation" (2026-04-24)
 
 Goal (SPEC §10.3): LLM slot extraction, next-question phrasing, state machine `GREETING → IDENTIFYING_SCOPE → COLLECTING_INPUTS → READY_TO_QUOTE`. Work type hardcoded to painting. On `READY_TO_QUOTE`: quote computed and logged as JSON. No PDF (M4).
