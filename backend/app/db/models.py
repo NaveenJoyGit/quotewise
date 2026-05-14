@@ -15,6 +15,7 @@ from sqlalchemy import (
     String,
     Text,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -44,6 +45,17 @@ class Contractor(Base):
     whatsapp_link_slug: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     logo_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     gst_number: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    api_key: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+        unique=True,
+        index=True,
+    )
+    wa_phone_number_id: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True
+    )
     approval_mode: Mapped[ApprovalMode] = mapped_column(
         Enum(ApprovalMode, name="approval_mode"),
         nullable=False,

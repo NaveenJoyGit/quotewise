@@ -2,13 +2,12 @@
 from __future__ import annotations
 
 import logging
-from typing import Generator
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session as DBSession
 
-from app.db.base import SessionLocal
+from app.api.deps import get_current_contractor, get_db
 from app.db.enums import QuoteStatus
 from app.db.models import Contractor, Quote
 
@@ -43,31 +42,16 @@ class QuoteResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-def get_db() -> Generator[DBSession, None, None]:
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
 @router.get("", response_model=list[QuoteResponse])
 def list_quotes(
     status: QuoteStatus | None = Query(default=None, description="Filter by quote status"),
     limit: int = Query(default=50, le=200),
     offset: int = Query(default=0, ge=0),
+    contractor: Contractor = Depends(get_current_contractor),
     db: DBSession = Depends(get_db),
 ) -> list[QuoteResponse]:
-    """Return quotes for the active contractor, newest first."""
-    # M4: single-tenant — resolve the one contractor in the DB.
-    contractor = db.query(Contractor).order_by(Contractor.created_at).first()
-    if contractor is None:
-        return []
-
-    q = (
-        db.query(Quote)
-        .filter(Quote.contractor_id == contractor.id)
-    )
+    """Return quotes for the authenticated contractor, newest first."""
+    q = db.query(Quote).filter(Quote.contractor_id == contractor.id)
     if status is not None:
         q = q.filter(Quote.status == status)
 

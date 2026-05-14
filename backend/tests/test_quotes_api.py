@@ -48,42 +48,29 @@ def _make_quote(**overrides):
 
 
 def _make_client_with_quotes(quotes: list, contractor=None):
-    """Return a TestClient where the quotes DB query is stubbed."""
+    """Return a TestClient where auth and quotes DB queries are stubbed."""
     if contractor is None:
         contractor = _make_contractor()
 
     mock_db = MagicMock()
-
-    def _contractor_query(*args, **kwargs):
-        q = MagicMock()
-        q.order_by.return_value.first.return_value = contractor
-        return q
-
-    def _quote_query(*args, **kwargs):
-        q = MagicMock()
-        q.filter.return_value = q
-        q.order_by.return_value = q
-        q.offset.return_value = q
-        q.limit.return_value.all.return_value = quotes
-        return q
-
-    def query_side_effect(model):
-        from app.db.models import Contractor, Quote
-        if model is Contractor:
-            return _contractor_query()
-        if model is Quote:
-            return _quote_query()
-        return MagicMock()
-
-    mock_db.query.side_effect = query_side_effect
+    quote_q = MagicMock()
+    quote_q.filter.return_value = quote_q
+    quote_q.order_by.return_value = quote_q
+    quote_q.offset.return_value = quote_q
+    quote_q.limit.return_value.all.return_value = quotes
+    mock_db.query.return_value = quote_q
 
     app = create_app()
-    from app.api.quotes import get_db
+    from app.api.deps import get_current_contractor, get_db
 
     def override_db():
         yield mock_db
 
+    def override_auth():
+        return contractor
+
     app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_current_contractor] = override_auth
     return TestClient(app)
 
 
@@ -130,14 +117,13 @@ def test_total_is_correct():
     assert resp.json()[0]["total"] == "25960.00"
 
 
-def test_no_contractor_returns_empty():
+def test_missing_auth_header_returns_401():
+    from app.api.deps import get_db
+
     mock_db = MagicMock()
-    q = MagicMock()
-    q.order_by.return_value.first.return_value = None
-    mock_db.query.return_value = q
+    mock_db.query.return_value.filter.return_value.first.return_value = None
 
     app = create_app()
-    from app.api.quotes import get_db
 
     def override_db():
         yield mock_db
@@ -145,8 +131,7 @@ def test_no_contractor_returns_empty():
     app.dependency_overrides[get_db] = override_db
     client = TestClient(app)
     resp = client.get("/api/v1/quotes")
-    assert resp.status_code == 200
-    assert resp.json() == []
+    assert resp.status_code == 401
 
 
 def test_pdf_url_is_returned_when_set():

@@ -1,8 +1,4 @@
-"""Thin DB helpers for the conversation layer (SPEC §8.1 single responsibility).
-
-M3: single-tenant dev — resolve_contractor returns the first contractor.
-M5 debt: add wa_phone_number_id to Contractor and route by it.
-"""
+"""Thin DB helpers for the conversation layer (SPEC §8.1 single responsibility)."""
 from __future__ import annotations
 
 import logging
@@ -21,11 +17,32 @@ from app.services.whatsapp.payload import InboundMessage
 logger = logging.getLogger(__name__)
 
 
-def resolve_contractor(db: DBSession) -> Contractor:
-    """Return the first (and in M3, only) contractor.
+class ContractorNotFoundError(RuntimeError):
+    """Raised when a wa_phone_number_id is provided but matches no contractor."""
 
-    M5 TODO: resolve by wa_phone_number_id from the inbound payload.
+
+def resolve_contractor(db: DBSession, wa_phone_number_id: str | None = None) -> Contractor:
+    """Resolve the contractor for an inbound message.
+
+    - wa_phone_number_id provided and found → return that contractor.
+    - wa_phone_number_id provided but NOT found → raise ContractorNotFoundError
+      (prevents silent mis-routing between contractors in multi-tenant deployments).
+    - wa_phone_number_id is None → fall back to first contractor by created_at
+      (dev / mock-mode compat where Meta envelope has no phone_number_id).
     """
+    if wa_phone_number_id:
+        contractor = (
+            db.query(Contractor)
+            .filter(Contractor.wa_phone_number_id == wa_phone_number_id)
+            .first()
+        )
+        if contractor is not None:
+            return contractor
+        raise ContractorNotFoundError(
+            f"No contractor with wa_phone_number_id={wa_phone_number_id!r}. "
+            "Register this WA phone number ID during onboarding."
+        )
+
     contractor = db.query(Contractor).order_by(Contractor.created_at).first()
     if contractor is None:
         raise RuntimeError("No contractor found. Run scripts/seed_data.py first.")
