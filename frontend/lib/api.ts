@@ -23,9 +23,12 @@ export interface Quote {
 const BACKEND_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
 
-export async function fetchQuotes(): Promise<Quote[]> {
+export async function fetchQuotes(apiKey: string): Promise<Quote[]> {
   const res = await fetch(`${BACKEND_URL}/api/v1/quotes`, {
     cache: "no-store",
+    headers: {
+      "X-Contractor-Key": apiKey,
+    },
   });
   if (!res.ok) {
     throw new Error(`Failed to fetch quotes: ${res.status}`);
