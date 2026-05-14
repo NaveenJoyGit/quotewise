@@ -1,5 +1,240 @@
 # Changelog
 
+## Multitenancy — contractor API key auth (2026-05-15)
+
+Goal: proper isolation between contractors so multiple contractors can coexist in the same deployment without data leakage.
+
+**Problem:** through M5, `GET /api/v1/quotes` was hardcoded to the first contractor in the DB; `POST /api/v1/contractors/{id}/pricing/{work_type}` had no auth at all; and `resolve_contractor()` silently fell back to the first contractor when an unknown `wa_phone_number_id` arrived — a silent data-leak risk.
+
+### What was done
+
+- **SPEC.md §3.3 added** — tight section defining per-contractor API key auth: UUID v4, server-generated at signup, returned once in onboarding step 1, passed as `X-Contractor-Key` header on all dashboard API calls.
+
+- **Migration 0003** (`alembic/versions/0003_add_contractor_api_key.py`) — adds `api_key UUID NOT NULL DEFAULT gen_random_uuid()` to `contractors` with a unique index. Existing rows get a value automatically via the server default.
+
+- **`Contractor` ORM model** — `api_key: Mapped[uuid.UUID]` with `default=uuid.uuid4` (Python-side) and `server_default=gen_random_uuid()` (DB-side).
+
+- **`app/api/deps.py`** (new) — shared FastAPI dependencies:
+  - `get_db()` — yields a `SessionLocal` session; replaces the duplicated `get_db` that previously lived in both `quotes.py` and `onboarding.py`.
+  - `get_current_contractor()` — reads `X-Contractor-Key` header, validates UUID format, looks up by `api_key`; 401 on missing, malformed, or unknown key.
+
+- **`GET /api/v1/quotes`** — now uses `Depends(get_current_contractor)`; filters quotes by `contractor.id`. The old hardcoded `"first contractor in DB"` query (and its `# M4: single-tenant` comment) is gone.
+
+- **`POST /api/v1/contractors/{id}/pricing/{work_type}`** — requires `X-Contractor-Key`; returns 403 if the URL `contractor_id` does not match the authenticated contractor.
+
+- **`POST /api/v1/onboarding/contractors`** — now returns `api_key` in the response. This is the only time the key is revealed.
+
+- **`resolve_contractor()` fix** (`session_repo.py`) — when `wa_phone_number_id` is provided but doesn't match any contractor, raises `ContractorNotFoundError` instead of silently routing to the first contractor. The fallback to first contractor is retained only when `wa_phone_number_id` is `None` (dev/mock mode).
+
+- **Frontend — `/login` page** (`app/login/page.tsx`) — contractor enters their API key; client-side UUID validation; saved as `contractor_key` cookie (30-day expiry); redirects to `/quotes`.
+
+- **Frontend — root redirect** (`app/page.tsx`) — reads `contractor_key` cookie; redirects to `/login` if absent, `/quotes` if present.
+
+- **Frontend — `/quotes` page** — reads `contractor_key` cookie; redirects to `/login` if missing; passes key as `X-Contractor-Key` header in `fetchQuotes()`.
+
+- **Frontend — onboarding step 3** (`StepThree.tsx`) — displays `api_key` in an amber "save this — shown once" box with a copy button; saves it to the `contractor_key` cookie on mount (auto-login after onboarding).
+
+- **Frontend — onboarding step 2** (`StepTwo.tsx`) — accepts `apiKey` prop, forwards to `savePricingConfig()` as `X-Contractor-Key` header.
+
+- **Tests** — 280 unit tests passing (was 272). Added `test_auth_deps.py` (8 tests covering missing/invalid/unknown key → 401, valid key → 200). Updated `test_quotes_api.py` (auth dep override; replaced `test_no_contractor_returns_empty` with `test_missing_auth_header_returns_401`). Updated `test_onboarding_api.py` (happy-path now properly checks `api_key` in response; `TestSavePricingConfig` adds 401/403 tests). Updated `test_session_repo_db.py` integration test to expect `ContractorNotFoundError` for unknown `wa_phone_number_id`.
+
+### Files added
+
+```
+backend/alembic/versions/0003_add_contractor_api_key.py
+backend/app/api/deps.py
+backend/tests/test_auth_deps.py
+frontend/app/login/page.tsx
+```
+
+### Files edited
+
+```
+SPEC.md                                              added §3.3, updated §9 and §10.5
+backend/app/db/models.py                             Contractor.api_key field
+backend/app/api/quotes.py                            uses get_current_contractor dep
+backend/app/api/onboarding.py                        imports deps.get_db; api_key in response; 403 on mismatch
+backend/app/services/conversation/session_repo.py    ContractorNotFoundError; no silent fallback
+backend/tests/test_quotes_api.py                     auth dep override + 401 test
+backend/tests/test_onboarding_api.py                 api_key in fake; 401/403 tests for save_pricing
+backend/tests/test_session_repo_db.py                unknown wa_id now expects ContractorNotFoundError
+frontend/lib/api.ts                                  fetchQuotes(apiKey) with X-Contractor-Key
+frontend/lib/onboarding-api.ts                       ContractorResponse.api_key; savePricingConfig(apiKey)
+frontend/app/page.tsx                                cookie-aware redirect
+frontend/app/quotes/page.tsx                         cookie read + /login redirect + auth header
+frontend/app/onboarding/page.tsx                     passes contractor.api_key to StepTwo
+frontend/app/onboarding/components/StepTwo.tsx       apiKey prop
+frontend/app/onboarding/components/StepThree.tsx     API key display + cookie set
+```
+
+### How to run locally
+
+Unit tests (no external deps):
+```
+uv sync --extra dev
+uv run pytest backend/tests -q -m "not integration" \
+  --cov=app.services --cov=app.api --cov-report=term-missing
+```
+
+DB integration tests (requires Docker Desktop):
+```
+uv run pytest backend/tests/test_session_repo_db.py -v
+```
+
+Migrate existing DB:
+```
+uv run alembic -c backend/alembic.ini upgrade head
+# Existing contractor rows get api_key auto-assigned via gen_random_uuid().
+# Retrieve the dev contractor's key:
+uv run python -c "
+import sys; sys.path.insert(0, 'backend')
+from app.db.base import SessionLocal
+from app.db.models import Contractor
+s = SessionLocal()
+c = s.query(Contractor).first()
+print('API key:', c.api_key)
+"
+```
+
+Frontend:
+```
+cd frontend && npm run dev   # visit http://localhost:3000/login
+```
+
+---
+
+## Milestone 5 — "Onboarding + rate card ingestion" (2026-04-27)
+
+Goal (SPEC §10.5): contractor self-service onboarding, AI rate card ingestion, false ceiling work type, multi-contractor routing.
+
+**Success criterion:** A new contractor can sign up, upload their rate card, and start receiving AI-handled enquiries without manual intervention.
+
+### What was done
+
+- **False ceiling work type** (`seed_rules.py`) — `FALSE_CEILING_RULES` added (3 ceiling types × 3 finishes = 9 rate rows, 18% GST). All M1–M4 code already supported any work type without changes. Seed script (`seed_data.py`) now upserts both painting and false ceiling configs for the dev contractor. 9 new parametrized evaluator tests cover every false ceiling rate row.
+
+- **Work type detection (LLM)** — `IdentifyingScopeHandler` no longer hardcodes `WorkType.painting`. New `WorkTypeDetector` service + `work_type_detection.jinja` prompt classify buyer messages. Logic: single work type = no LLM call (zero regression risk); multiple = LLM; ambiguous = ask buyer, stay in `identifying_scope`. `HandlerDeps` extended with `available_work_types: list[WorkType]` (default `[]`, backward-compatible) and `pricing_rules_by_work_type: dict` so the handler can look up the detected type's rules without an extra DB round-trip. Engine loads all active configs per contractor in one query (`_load_available_work_types_and_rules`). `_load_pricing_rules` returns `{}` during `identifying_scope` (before work type is known) to avoid premature DB lookups.
+
+- **Multi-contractor routing** (`wa_phone_number_id`) — Alembic migration 0002 adds `wa_phone_number_id VARCHAR(64)` + index to `contractors`. `Contractor` model updated. `parse_inbound()` now extracts `metadata.phone_number_id` from the Meta envelope and exposes it as `InboundMessage.phone_number_id`. `resolve_contractor(db, wa_phone_number_id=None)` looks up by this field first; falls back to first contractor (all unit tests still pass). Task layer passes `msg.phone_number_id` per-message (contractor resolved inside the loop).
+
+- **LLM Pro client** — `VertexGeminiClient.__init__` gains explicit `model_name: str | None` parameter (default: Flash). Factory `get_llm_client(model="flash"|"pro")` selects Pro for rate card ingestion. Mock client is unchanged.
+
+- **Rate card ingestion service** (`services/rate_card/`) — `extract_text()` supports PDF (via `pypdf`) and plain text/CSV. `RateCardParser(llm).parse()` calls Gemini Pro with `rate_card_ingest.jinja`, strips `_notes`, validates output with `PricingRules.model_validate()`, and always returns `ParsedRateCard` (never raises on validation failure — errors go into `validation_errors` list so the UI can show them for manual correction).
+
+- **Prompt templates** — `rate_card_ingest.jinja` (full PricingRules schema embedded, one few-shot example, brand→tier mapping rules); `work_type_detection.jinja` (JSON-only, 6 few-shot examples, "unclear" fallback).
+
+- **Onboarding service** (`services/onboarding/service.py`) — `create_contractor()` (409 on duplicate phone/slug); `save_pricing_config()` (deactivates existing, increments version).
+
+- **Onboarding API** (`api/onboarding.py`) — `POST /api/v1/onboarding/contractors` (step 1); `POST /api/v1/onboarding/rate-card/parse` (step 2, multipart file upload → Gemini Pro → ParsedRulesResponse); `POST /api/v1/contractors/{id}/pricing/{work_type}` (step 3). Registered in `main.py`.
+
+- **Frontend 3-step onboarding** (`frontend/app/onboarding/`) — Client-side Next.js 14 flow: StepOne (business profile form, auto-slug from name), StepTwo (file upload + AI parse + editable rate table), StepThree (summary + WhatsApp share link + copy button). `frontend/lib/onboarding-api.ts` API client. "+ Add Contractor" button added to `/quotes` page.
+
+- **testcontainers DB integration tests** (`tests/test_session_repo_db.py`) — 8 tests covering `resolve_contractor` (by wa_phone_number_id, fallback, unknown id), `find_or_create_session` (new, existing, TTL-expired → new), `log_message`, `create_quote`, `apply_handler_result`. Marked `@pytest.mark.integration`, excluded from fast suite. Spins up `postgres:16-alpine` and runs `alembic upgrade head` before tests.
+
+- **Dependencies added** — `pypdf>=4.0` (rate card PDF extraction), `python-multipart>=0.0.9` (FastAPI file upload), `testcontainers>=4.8` (dev, DB integration tests). `pytest.ini_options` gains `markers` declaration.
+
+- **272 unit tests passing, 0 failures.** Pricing stays at 100% line coverage. All new services at 100% or close. Integration tests are separate (`-m integration`).
+
+### Files added
+
+```
+backend/alembic/versions/0002_add_wa_phone_number_id.py
+backend/app/prompts/rate_card_ingest.jinja
+backend/app/prompts/work_type_detection.jinja
+backend/app/services/rate_card/__init__.py
+backend/app/services/rate_card/extractor.py
+backend/app/services/rate_card/parser.py
+backend/app/services/conversation/work_type_detector.py
+backend/app/services/onboarding/__init__.py
+backend/app/services/onboarding/service.py
+backend/app/api/onboarding.py
+backend/tests/test_rate_card_parser.py
+backend/tests/test_work_type_detector.py
+backend/tests/test_onboarding_api.py
+backend/tests/test_session_repo_db.py         (integration, marked)
+frontend/app/onboarding/page.tsx
+frontend/app/onboarding/components/StepOne.tsx
+frontend/app/onboarding/components/StepTwo.tsx
+frontend/app/onboarding/components/StepThree.tsx
+frontend/lib/onboarding-api.ts
+```
+
+### Files edited
+
+```
+backend/app/services/pricing/seed_rules.py
+backend/app/services/conversation/types.py
+backend/app/services/conversation/handlers/identifying_scope.py
+backend/app/services/conversation/engine.py
+backend/app/services/conversation/session_repo.py
+backend/app/services/whatsapp/payload.py
+backend/app/services/llm/vertex.py
+backend/app/services/llm/factory.py
+backend/app/db/models.py
+backend/app/workers/tasks.py
+backend/app/main.py
+backend/app/quotes/page.tsx
+backend/tests/test_handlers.py
+backend/tests/test_pricing_evaluator.py
+backend/tests/test_llm_factory.py
+backend/tests/test_payload_parser.py
+backend/tests/test_conversation_engine.py
+scripts/seed_data.py
+pyproject.toml
+```
+
+### How to run locally
+
+Unit tests (no external deps — runs in < 1s):
+```
+uv sync --extra dev
+uv run pytest backend/tests -q -m "not integration" \
+  --cov=app.services --cov=app.api --cov-report=term-missing
+```
+
+DB integration tests (requires Docker Desktop):
+```
+uv run pytest backend/tests/test_session_repo_db.py -v
+```
+
+End-to-end with false ceiling (mock LLM):
+```
+docker compose up -d postgres redis
+uv run alembic -c backend/alembic.ini upgrade head
+uv run python scripts/seed_data.py
+uv run uvicorn app.main:app --app-dir backend          # terminal 1
+uv run celery -A app.workers.celery_app worker -l info --workdir backend  # terminal 2
+
+# Painting (existing)
+python scripts/simulate_conversation.py "hello"
+python scripts/simulate_conversation.py "1000 sqft new wall, premium paint, 2 coats"
+
+# False ceiling (new — work_type auto-detected if LLM_PROVIDER=vertex)
+python scripts/simulate_conversation.py "hi, need false ceiling"
+python scripts/simulate_conversation.py "gypsum board, 300 sqft, plain finish"
+```
+
+Onboarding flow:
+```
+# Onboarding API
+curl -sX POST http://localhost:8000/api/v1/onboarding/contractors \
+  -H "Content-Type: application/json" \
+  -d '{"business_name":"Test Co","phone":"+919876543210","city":"Bangalore","whatsapp_link_slug":"testco"}' | python -m json.tool
+
+# Frontend
+cd frontend && npm install && npm run dev   # visit http://localhost:3000/onboarding
+```
+
+### What's next (M6 per SPEC §10.6)
+
+- Rate staleness nudges
+- Clarification loop handler (SPEC §5.2)
+- Audit log dashboard
+- Error handling for every edge case found with first real contractor
+- Onboard 1 real interior contractor in Bangalore
+
+---
+
 ## Milestone 4 — "Quote delivery" (2026-04-25)
 
 Goal (SPEC §10.4): PDF generation, contractor approval via WhatsApp keyword match, approved PDF delivered to buyer, read-only Next.js contractor dashboard.
