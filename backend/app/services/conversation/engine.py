@@ -12,8 +12,8 @@ from typing import TYPE_CHECKING, Any, Callable
 from sqlalchemy.orm import Session as DBSession
 
 from app.core.config import Settings, get_settings
-from app.db.enums import MessageDirection, MessageType, SessionState
-from app.db.models import Session as SessionModel
+from app.db.enums import MessageDirection, MessageType, SessionSource, SessionState
+from app.db.models import Contractor, Session as SessionModel
 from app.services.conversation import session_repo
 from app.services.conversation.handlers import UnknownStateError, get_handler
 from app.services.conversation.types import HandlerDeps, HandlerResult
@@ -49,8 +49,14 @@ class ConversationEngine:
         self.pending_quote_snapshot: dict[str, Any] | None = None
         self.last_session: SessionModel | None = None
 
-    def process(self, inbound: InboundMessage) -> str | None:
-        """Handle one inbound message; return the text to send back to the buyer."""
+    def process(
+        self,
+        inbound: InboundMessage,
+        *,
+        contractor: Contractor | None = None,
+        session: SessionModel | None = None,
+    ) -> str | None:
+        """Handle one inbound message; return outbound text (buyer or proxy contractor)."""
         self.pending_quote_snapshot = None
         self.last_session = None
 
@@ -66,15 +72,20 @@ class ConversationEngine:
             return _NON_TEXT_REFUSAL
 
         now = self._clock()
-        contractor = session_repo.resolve_contractor(self._db)
-        session = session_repo.find_or_create_session(
-            self._db,
-            contractor.contractor_id if hasattr(contractor, "contractor_id") else contractor.id,
-            inbound.from_phone,
-            now,
-            self._settings.session_ttl_hours,
+        contractor = contractor or session_repo.resolve_contractor(self._db)
+        contractor_id = (
+            contractor.id if hasattr(contractor, "id") else contractor.contractor_id
         )
+        if session is None:
+            session = session_repo.find_or_create_session(
+                self._db,
+                contractor_id,
+                inbound.from_phone,
+                now,
+                self._settings.session_ttl_hours,
+            )
         self.last_session = session
+        proxy_mode = session.source == SessionSource.contractor_forward
 
         session_repo.log_message(
             self._db,
@@ -84,6 +95,10 @@ class ConversationEngine:
             raw_content=inbound.text,
             normalized_content=None,
             wa_message_id=inbound.whatsapp_message_id,
+        )
+
+        available_work_types, pricing_rules_by_work_type = (
+            self._load_available_work_types_and_rules(contractor)
         )
 
         outbound_text = ""
@@ -108,6 +123,9 @@ class ConversationEngine:
                 now=self._clock,
                 business_name=contractor.business_name,
                 pricing_rules=pricing_rules,
+                available_work_types=available_work_types,
+                pricing_rules_by_work_type=pricing_rules_by_work_type,
+                proxy_mode=proxy_mode,
             )
 
             result: HandlerResult = handler.handle(session, inbound, deps)
@@ -143,8 +161,36 @@ class ConversationEngine:
         self._db.commit()
         return outbound_text
 
+    def _load_available_work_types_and_rules(
+        self, contractor: Any
+    ) -> tuple[list, dict[str, Any]]:
+        """Return (available_work_types, pricing_rules_by_work_type) for the contractor."""
+        from app.db.models import PricingConfig
+
+        contractor_id = (
+            contractor.contractor_id
+            if hasattr(contractor, "contractor_id")
+            else contractor.id
+        )
+        configs = (
+            self._db.query(PricingConfig)
+            .filter(
+                PricingConfig.contractor_id == contractor_id,
+                PricingConfig.is_active == True,  # noqa: E712
+            )
+            .all()
+        )
+        available = [c.work_type for c in configs]
+        rules_map = {c.work_type.value: c.rules for c in configs}
+        return available, rules_map
+
     def _load_pricing_rules(self, session: SessionModel, contractor: Any) -> dict:
-        from app.db.enums import WorkType
+        from app.db.enums import SessionState, WorkType
+
+        # During identifying_scope the work type is not yet known — return empty dict.
+        # IdentifyingScopeHandler doesn't need rules; it only needs available_work_types.
+        if session.state == SessionState.identifying_scope and session.work_type is None:
+            return {}
 
         work_type = session.work_type or WorkType.painting
         contractor_id = (

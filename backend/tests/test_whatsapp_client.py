@@ -18,7 +18,9 @@ def _settings(**overrides) -> Settings:
 def test_client_runs_in_mock_mode_without_credentials():
     client = WhatsAppClient(settings=_settings())
     result = client.send_text(to="9198", body="hi")
-    assert result == {"mock": True, "to": "9198", "body": "hi"}
+    assert result["mock"] is True
+    assert result["to"] == "9198"
+    assert result["body"] == "hi"
 
 
 def test_client_posts_to_graph_api_when_configured():

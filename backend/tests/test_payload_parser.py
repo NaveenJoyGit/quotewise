@@ -10,6 +10,26 @@ def test_parse_text_message():
     assert m.text == "hello world"
     assert m.message_type == "text"
     assert m.whatsapp_message_id == "wamid.ABC"
+    assert m.phone_number_id == "PHONE_NUMBER_ID"
+
+
+def test_parse_phone_number_id_extracted_from_metadata():
+    msgs = parse_inbound(text_message())
+    assert msgs[0].phone_number_id == "PHONE_NUMBER_ID"
+
+
+def test_parse_phone_number_id_defaults_to_empty_when_missing():
+    payload = {
+        "entry": [{
+            "changes": [{
+                "value": {
+                    "messages": [{"from": "919", "id": "w1", "type": "text", "text": {"body": "hi"}}]
+                }
+            }]
+        }]
+    }
+    msgs = parse_inbound(payload)
+    assert msgs[0].phone_number_id == ""
 
 
 def test_parse_status_only_returns_empty():

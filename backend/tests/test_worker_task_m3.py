@@ -29,11 +29,20 @@ def _run_task(payload: dict, engine_return: str | None = "Hello!") -> dict:
     mock_db = MagicMock()
     mock_db.close = MagicMock()
 
+    tenant = MagicMock(phone="+919999900001")
+
     with (
         patch("app.db.base.SessionLocal", return_value=mock_db),
+        patch("app.core.config.get_settings", return_value=MagicMock(session_ttl_hours=72)),
         patch("app.services.llm.factory.get_llm_client", return_value=MagicMock()),
         patch("app.services.conversation.engine.ConversationEngine", mock_engine_cls),
         patch("app.services.whatsapp.client.WhatsAppClient", mock_wa_cls),
+        patch("app.services.conversation.session_repo.resolve_contractor", return_value=tenant),
+        patch(
+            "app.services.contractor_admin.session_repo.find_active_session",
+            return_value=None,
+        ),
+        patch("app.services.whatsapp.phone.find_contractor_by_phone", return_value=None),
     ):
         result = process_inbound_message(payload)
 
@@ -82,9 +91,13 @@ def test_db_session_closed_on_success():
 
     with (
         patch("app.db.base.SessionLocal", return_value=mock_db),
+        patch("app.core.config.get_settings", return_value=MagicMock(session_ttl_hours=72)),
         patch("app.services.llm.factory.get_llm_client", return_value=MagicMock()),
         patch("app.services.conversation.engine.ConversationEngine", return_value=MagicMock(**{"process.return_value": "ok"})),
         patch("app.services.whatsapp.client.WhatsAppClient", return_value=MagicMock()),
+        patch("app.services.conversation.session_repo.resolve_contractor", return_value=MagicMock()),
+        patch("app.services.contractor_admin.session_repo.find_active_session", return_value=None),
+        patch("app.services.whatsapp.phone.find_contractor_by_phone", return_value=None),
     ):
         process_inbound_message(payload)
 
@@ -99,9 +112,14 @@ def test_db_session_closed_on_engine_exception():
 
     with (
         patch("app.db.base.SessionLocal", return_value=mock_db),
+        patch("app.core.config.get_settings", return_value=MagicMock(session_ttl_hours=72)),
         patch("app.services.llm.factory.get_llm_client", return_value=MagicMock()),
         patch("app.services.conversation.engine.ConversationEngine", return_value=mock_engine),
         patch("app.services.whatsapp.client.WhatsAppClient", return_value=MagicMock()),
+        patch("app.services.conversation.session_repo.resolve_contractor", return_value=MagicMock()),
+        patch("app.services.contractor_admin.session_repo.find_active_session", return_value=None),
+        patch("app.services.whatsapp.phone.find_contractor_by_phone", return_value=None),
+        patch("app.workers.tasks._should_route_admin", return_value=False),
     ):
         result = process_inbound_message(payload)
 

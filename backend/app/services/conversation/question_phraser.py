@@ -19,6 +19,7 @@ class QuestionPhraser:
         slot_def: InputDef,
         business_name: str,
         collected_so_far: dict[str, Any],
+        proxy_mode: bool = False,
     ) -> str:
         """Return a conversationally phrased question for slot_def.
 
@@ -26,6 +27,8 @@ class QuestionPhraser:
         A turn must never fail because of a phrasing hiccup.
         """
         fallback = slot_def.question_template or f"Could you tell me the {slot_def.name}?"
+        if proxy_mode and fallback:
+            fallback = f"For the buyer's enquiry: {fallback}"
 
         slot_context = {
             "name": slot_def.name,
@@ -46,6 +49,7 @@ class QuestionPhraser:
                     "slot_def": slot_context,
                     "business_name": business_name,
                     "collected_so_far": collected_so_far,
+                    "proxy_mode": proxy_mode,
                 },
             )
             text = resp.text.strip()

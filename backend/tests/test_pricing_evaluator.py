@@ -11,7 +11,7 @@ from app.services.pricing import (
 )
 from app.services.pricing.evaluator import validate_slot_value
 from app.services.pricing.schemas import InputDef
-from app.services.pricing.seed_rules import PAINTING_RULES
+from app.services.pricing.seed_rules import FALSE_CEILING_RULES, PAINTING_RULES
 
 
 # ---------------------------------------------------------------------------
@@ -321,3 +321,52 @@ def test_validate_slot_value_number_below_min():
     idef = InputDef(name="area_sqft", type="number", validation={"min": 10, "max": 10000})
     with pytest.raises(InvalidSlotValueError):
         validate_slot_value(idef, 5)
+
+
+# ---------------------------------------------------------------------------
+# False ceiling — every rate-table row (3 types × 3 finishes = 9 combos)
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "ceiling_type, finish, rate",
+    [
+        ("grid_ceiling", "plain", 85),
+        ("grid_ceiling", "cornice", 100),
+        ("grid_ceiling", "curved", 120),
+        ("gypsum_board", "plain", 120),
+        ("gypsum_board", "cornice", 145),
+        ("gypsum_board", "curved", 180),
+        ("pop_ceiling", "plain", 95),
+        ("pop_ceiling", "cornice", 115),
+        ("pop_ceiling", "curved", 155),
+    ],
+)
+def test_false_ceiling_every_rate_combo(ceiling_type, finish, rate):
+    q = evaluate_quote(
+        FALSE_CEILING_RULES,
+        {"area_sqft": 100, "ceiling_type": ceiling_type, "finish": finish},
+    )
+    assert q.line_items[0].rate == Decimal(rate)
+    assert q.subtotal == Decimal(rate * 100).quantize(Decimal("0.01"))
+    assert q.gst_amount == (q.subtotal * Decimal("0.18")).quantize(Decimal("0.01"))
+    assert q.total == q.subtotal + q.gst_amount
+
+
+def test_false_ceiling_line_item_description():
+    q = evaluate_quote(
+        FALSE_CEILING_RULES,
+        {"area_sqft": 200, "ceiling_type": "gypsum_board", "finish": "plain"},
+    )
+    assert q.line_items[0].description == "False ceiling — gypsum_board (plain)"
+    assert q.line_items[0].unit == "sqft"
+    assert q.line_items[0].quantity == Decimal("200")
+
+
+def test_false_ceiling_gst_calculation():
+    # 300 sqft gypsum_board curved @ 180/sqft = 54000 subtotal
+    q = evaluate_quote(
+        FALSE_CEILING_RULES,
+        {"area_sqft": 300, "ceiling_type": "gypsum_board", "finish": "curved"},
+    )
+    assert q.subtotal == Decimal("54000.00")
+    assert q.gst_amount == Decimal("9720.00")
+    assert q.total == Decimal("63720.00")

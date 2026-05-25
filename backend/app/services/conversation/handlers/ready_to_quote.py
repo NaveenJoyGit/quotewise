@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from dataclasses import asdict
 
-from app.db.enums import SessionState
+from app.db.enums import SessionSource, SessionState
 from app.db.models import Session as SessionModel
 from app.services.conversation.handlers import StateHandler
 from app.services.conversation.types import HandlerDeps, HandlerResult
@@ -16,6 +16,9 @@ logger = logging.getLogger(__name__)
 _BUYER_ACK = (
     "Thanks — I've got all the details. "
     "Your contractor will confirm the quote shortly."
+)
+_CONTRACTOR_FORWARD_ACK = (
+    "All details collected — generating your quote PDF now."
 )
 
 
@@ -38,6 +41,13 @@ class ReadyToQuoteHandler(StateHandler):
                 "payload": snapshot,
             },
         )
+
+        if session.source == SessionSource.contractor_forward:
+            return HandlerResult(
+                new_state=SessionState.ready_to_quote,
+                outbound_text=_CONTRACTOR_FORWARD_ACK,
+                quote_snapshot=snapshot,
+            )
 
         return HandlerResult(
             new_state=SessionState.awaiting_approval,

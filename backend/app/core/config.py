@@ -16,11 +16,25 @@ class Settings(BaseSettings):
     app_env: Literal["dev", "staging", "prod", "test"] = "dev"
     log_level: str = "INFO"
 
+    # meta | twilio — selects inbound parser and outbound client
+    wa_provider: Literal["meta", "twilio"] = "meta"
+
     wa_verify_token: str = Field(default="", description="Token echoed during Meta webhook setup")
     wa_app_secret: str = Field(default="", description="Used to HMAC-verify incoming webhooks")
     wa_access_token: str = Field(default="", description="Graph API bearer token; empty = mock mode")
     wa_phone_number_id: str = Field(default="", description="Meta phone_number_id for sending")
     wa_graph_api_version: str = "v21.0"
+
+    twilio_account_sid: str = Field(default="", description="Twilio Account SID")
+    twilio_auth_token: str = Field(default="", description="Twilio auth token (webhook + API)")
+    twilio_whatsapp_from: str = Field(
+        default="",
+        description="Twilio WhatsApp sender, e.g. whatsapp:+14155238886",
+    )
+    twilio_webhook_public_url: str = Field(
+        default="",
+        description="Public URL for Twilio signature validation (ngrok); defaults to request URL",
+    )
 
     redis_url: str = "redis://localhost:6379/0"
     database_url: str = "postgresql+psycopg://quotewise:quotewise@localhost:5432/quotewise"
@@ -43,6 +57,12 @@ class Settings(BaseSettings):
 
     @property
     def wa_send_enabled(self) -> bool:
+        if self.wa_provider == "twilio":
+            return bool(
+                self.twilio_account_sid
+                and self.twilio_auth_token
+                and self.twilio_whatsapp_from
+            )
         return bool(self.wa_access_token and self.wa_phone_number_id)
 
     @property

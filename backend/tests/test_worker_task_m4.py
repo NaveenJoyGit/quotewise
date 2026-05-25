@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import uuid
+from contextlib import ExitStack
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
@@ -24,8 +25,36 @@ _BUYER_PHONE = "919876543210"
 def _make_contractor(phone=_CONTRACTOR_PHONE):
     return SimpleNamespace(
         id=uuid.uuid4(),
-        phone=phone,
+        phone=f"+{phone}" if not phone.startswith("+") else phone,
         business_name="Test Contractor",
+    )
+
+
+def _enter_routing_patches(stack: ExitStack, registered_contractor=None, pending_quote=None) -> None:
+    """Register FR-001/FR-002 routing mocks on an ExitStack."""
+    stack.enter_context(
+        patch(
+            "app.services.contractor_admin.session_repo.find_active_session",
+            return_value=None,
+        )
+    )
+    stack.enter_context(
+        patch(
+            "app.services.whatsapp.phone.find_contractor_by_phone",
+            return_value=registered_contractor,
+        )
+    )
+    stack.enter_context(
+        patch(
+            "app.services.forwarded_quote.session_repo.find_active_forward_session",
+            return_value=None,
+        )
+    )
+    stack.enter_context(
+        patch(
+            "app.services.conversation.session_repo.find_pending_quote_for_contractor",
+            return_value=pending_quote,
+        )
     )
 
 
@@ -37,10 +66,13 @@ def _make_mock_engine(
     engine.process.return_value = outbound
     engine.pending_quote_snapshot = {"total": Decimal("25960.00")} if has_snapshot else None
     if has_snapshot:
+        from app.db.enums import SessionSource
+
         engine.last_session = SimpleNamespace(
             id=uuid.uuid4(),
             buyer_phone=_BUYER_PHONE,
             work_type=None,
+            source=SessionSource.buyer_direct,
         )
     else:
         engine.last_session = None
@@ -96,15 +128,17 @@ def test_contractor_message_routes_to_approval_service():
     approval_cls = MagicMock()
 
     payload = text_message(from_phone=_CONTRACTOR_PHONE, text="approve")
+    pending = _make_quote()
 
-    with patch("app.db.base.SessionLocal", return_value=MagicMock()), \
-         patch("app.core.config.get_settings", return_value=MagicMock(quote_validity_days=30)), \
-         patch("app.services.llm.factory.get_llm_client", return_value=MagicMock()), \
-         patch("app.services.conversation.engine.ConversationEngine", engine_cls), \
-         patch("app.services.whatsapp.client.WhatsAppClient", wa_cls), \
-         patch("app.services.approval.service.ApprovalService", approval_cls), \
-         patch("app.services.conversation.session_repo.resolve_contractor", return_value=contractor):
-
+    with ExitStack() as stack:
+        stack.enter_context(patch("app.db.base.SessionLocal", return_value=MagicMock()))
+        stack.enter_context(patch("app.core.config.get_settings", return_value=MagicMock(quote_validity_days=30)))
+        stack.enter_context(patch("app.services.llm.factory.get_llm_client", return_value=MagicMock()))
+        stack.enter_context(patch("app.services.conversation.engine.ConversationEngine", engine_cls))
+        stack.enter_context(patch("app.services.whatsapp.client.WhatsAppClient", wa_cls))
+        stack.enter_context(patch("app.services.approval.service.ApprovalService", approval_cls))
+        stack.enter_context(patch("app.services.conversation.session_repo.resolve_contractor", return_value=contractor))
+        _enter_routing_patches(stack, contractor, pending_quote=pending)
         result = process_inbound_message(payload)
 
     approval_cls.return_value.process.assert_called_once()
@@ -121,14 +155,15 @@ def test_buyer_message_routes_to_engine():
 
     payload = text_message(from_phone=_BUYER_PHONE, text="hello")
 
-    with patch("app.db.base.SessionLocal", return_value=MagicMock()), \
-         patch("app.core.config.get_settings", return_value=MagicMock(quote_validity_days=30)), \
-         patch("app.services.llm.factory.get_llm_client", return_value=MagicMock()), \
-         patch("app.services.conversation.engine.ConversationEngine", engine_cls), \
-         patch("app.services.whatsapp.client.WhatsAppClient", wa_cls), \
-         patch("app.services.approval.service.ApprovalService", approval_cls), \
-         patch("app.services.conversation.session_repo.resolve_contractor", return_value=contractor):
-
+    with ExitStack() as stack:
+        stack.enter_context(patch("app.db.base.SessionLocal", return_value=MagicMock()))
+        stack.enter_context(patch("app.core.config.get_settings", return_value=MagicMock(quote_validity_days=30)))
+        stack.enter_context(patch("app.services.llm.factory.get_llm_client", return_value=MagicMock()))
+        stack.enter_context(patch("app.services.conversation.engine.ConversationEngine", engine_cls))
+        stack.enter_context(patch("app.services.whatsapp.client.WhatsAppClient", wa_cls))
+        stack.enter_context(patch("app.services.approval.service.ApprovalService", approval_cls))
+        stack.enter_context(patch("app.services.conversation.session_repo.resolve_contractor", return_value=contractor))
+        _enter_routing_patches(stack, None)
         result = process_inbound_message(payload)
 
     engine.process.assert_called_once()
@@ -146,16 +181,17 @@ def test_snapshot_triggers_contractor_notification():
 
     payload = text_message(from_phone=_BUYER_PHONE, text="1000sqft premium")
 
-    with patch("app.db.base.SessionLocal", return_value=MagicMock()), \
-         patch("app.core.config.get_settings", return_value=MagicMock(quote_validity_days=30)), \
-         patch("app.services.llm.factory.get_llm_client", return_value=MagicMock()), \
-         patch("app.services.conversation.engine.ConversationEngine", engine_cls), \
-         patch("app.services.whatsapp.client.WhatsAppClient", wa_cls), \
-         patch("app.services.approval.service.ApprovalService", approval_cls), \
-         patch("app.services.conversation.session_repo.resolve_contractor", return_value=contractor), \
-         patch("app.services.conversation.session_repo.load_active_pricing_config", return_value=SimpleNamespace(version=1)), \
-         patch("app.services.conversation.session_repo.create_quote", return_value=_make_quote()):
-
+    with ExitStack() as stack:
+        stack.enter_context(patch("app.db.base.SessionLocal", return_value=MagicMock()))
+        stack.enter_context(patch("app.core.config.get_settings", return_value=MagicMock(quote_validity_days=30)))
+        stack.enter_context(patch("app.services.llm.factory.get_llm_client", return_value=MagicMock()))
+        stack.enter_context(patch("app.services.conversation.engine.ConversationEngine", engine_cls))
+        stack.enter_context(patch("app.services.whatsapp.client.WhatsAppClient", wa_cls))
+        stack.enter_context(patch("app.services.approval.service.ApprovalService", approval_cls))
+        stack.enter_context(patch("app.services.conversation.session_repo.resolve_contractor", return_value=contractor))
+        stack.enter_context(patch("app.services.conversation.session_repo.load_active_pricing_config", return_value=SimpleNamespace(version=1)))
+        stack.enter_context(patch("app.services.conversation.session_repo.create_quote", return_value=_make_quote()))
+        _enter_routing_patches(stack, None)
         result = process_inbound_message(payload)
 
     # Contractor notification must be sent
@@ -177,14 +213,15 @@ def test_no_snapshot_does_not_notify_contractor():
 
     payload = text_message(from_phone=_BUYER_PHONE, text="hello")
 
-    with patch("app.db.base.SessionLocal", return_value=MagicMock()), \
-         patch("app.core.config.get_settings", return_value=MagicMock(quote_validity_days=30)), \
-         patch("app.services.llm.factory.get_llm_client", return_value=MagicMock()), \
-         patch("app.services.conversation.engine.ConversationEngine", engine_cls), \
-         patch("app.services.whatsapp.client.WhatsAppClient", wa_cls), \
-         patch("app.services.approval.service.ApprovalService", approval_cls), \
-         patch("app.services.conversation.session_repo.resolve_contractor", return_value=contractor):
-
+    with ExitStack() as stack:
+        stack.enter_context(patch("app.db.base.SessionLocal", return_value=MagicMock()))
+        stack.enter_context(patch("app.core.config.get_settings", return_value=MagicMock(quote_validity_days=30)))
+        stack.enter_context(patch("app.services.llm.factory.get_llm_client", return_value=MagicMock()))
+        stack.enter_context(patch("app.services.conversation.engine.ConversationEngine", engine_cls))
+        stack.enter_context(patch("app.services.whatsapp.client.WhatsAppClient", wa_cls))
+        stack.enter_context(patch("app.services.approval.service.ApprovalService", approval_cls))
+        stack.enter_context(patch("app.services.conversation.session_repo.resolve_contractor", return_value=contractor))
+        _enter_routing_patches(stack, None)
         process_inbound_message(payload)
 
     contractor_calls = [
@@ -202,14 +239,16 @@ def test_exception_in_approval_does_not_abort_batch():
 
     payload = text_message(from_phone=_CONTRACTOR_PHONE, text="approve")
 
-    with patch("app.db.base.SessionLocal", return_value=mock_db), \
-         patch("app.core.config.get_settings", return_value=MagicMock(quote_validity_days=30)), \
-         patch("app.services.llm.factory.get_llm_client", return_value=MagicMock()), \
-         patch("app.services.conversation.engine.ConversationEngine", MagicMock()), \
-         patch("app.services.whatsapp.client.WhatsAppClient", MagicMock()), \
-         patch("app.services.approval.service.ApprovalService", approval_cls), \
-         patch("app.services.conversation.session_repo.resolve_contractor", return_value=contractor):
-
+    pending = _make_quote()
+    with ExitStack() as stack:
+        stack.enter_context(patch("app.db.base.SessionLocal", return_value=mock_db))
+        stack.enter_context(patch("app.core.config.get_settings", return_value=MagicMock(quote_validity_days=30)))
+        stack.enter_context(patch("app.services.llm.factory.get_llm_client", return_value=MagicMock()))
+        stack.enter_context(patch("app.services.conversation.engine.ConversationEngine", MagicMock()))
+        stack.enter_context(patch("app.services.whatsapp.client.WhatsAppClient", MagicMock()))
+        stack.enter_context(patch("app.services.approval.service.ApprovalService", approval_cls))
+        stack.enter_context(patch("app.services.conversation.session_repo.resolve_contractor", return_value=contractor))
+        _enter_routing_patches(stack, contractor, pending_quote=pending)
         result = process_inbound_message(payload)
 
     assert result["processed"] == 0
@@ -222,15 +261,16 @@ def test_db_always_closed_on_success():
 
     payload = text_message(from_phone=_BUYER_PHONE, text="hi")
 
-    with patch("app.db.base.SessionLocal", return_value=mock_db), \
-         patch("app.core.config.get_settings", return_value=MagicMock(quote_validity_days=30)), \
-         patch("app.services.llm.factory.get_llm_client", return_value=MagicMock()), \
-         patch("app.services.conversation.engine.ConversationEngine", MagicMock(
-             return_value=_make_mock_engine(has_snapshot=False),
-         )), \
-         patch("app.services.whatsapp.client.WhatsAppClient", MagicMock()), \
-         patch("app.services.conversation.session_repo.resolve_contractor", return_value=contractor):
-
+    with ExitStack() as stack:
+        stack.enter_context(patch("app.db.base.SessionLocal", return_value=mock_db))
+        stack.enter_context(patch("app.core.config.get_settings", return_value=MagicMock(quote_validity_days=30)))
+        stack.enter_context(patch("app.services.llm.factory.get_llm_client", return_value=MagicMock()))
+        stack.enter_context(patch("app.services.conversation.engine.ConversationEngine", MagicMock(
+            return_value=_make_mock_engine(has_snapshot=False),
+        )))
+        stack.enter_context(patch("app.services.whatsapp.client.WhatsAppClient", MagicMock()))
+        stack.enter_context(patch("app.services.conversation.session_repo.resolve_contractor", return_value=contractor))
+        _enter_routing_patches(stack, None)
         process_inbound_message(payload)
 
     mock_db.close.assert_called_once()

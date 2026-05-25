@@ -1,10 +1,7 @@
-"""Hand-written painting PricingConfig.rules (SPEC §3.2).
+"""Hand-written PricingConfig.rules for painting and false ceiling (SPEC §3.2).
 
-3 tiers × 3 surface types = 9 rate-table entries. Modifiers: extra-coat
-surcharge (+3/sqft per coat beyond 2) and 18% GST.
-
-This dict doubles as (a) the seed payload written into the `pricing_configs`
-table and (b) the fixture driving the pricing-evaluator unit tests.
+Doubles as (a) seed payloads written into `pricing_configs` and (b) fixtures
+driving the pricing-evaluator unit tests.
 """
 
 PAINTING_RULES: dict = {
@@ -72,6 +69,62 @@ PAINTING_RULES: dict = {
     "line_item_template": [
         {
             "description": "Painting — {paint_brand_tier} ({surface_type}), {coats} coats",
+            "quantity_field": "area_sqft",
+            "unit": "sqft",
+            "rate_source": "computed_rate",
+        }
+    ],
+}
+
+FALSE_CEILING_RULES: dict = {
+    "schema_version": 1,
+    "base_formula": "area_sqft * rate_per_sqft",
+    "inputs": [
+        {
+            "name": "area_sqft",
+            "type": "number",
+            "required": True,
+            "validation": {"min": 10, "max": 5000},
+            "question_template": "What's the approximate false ceiling area in square feet?",
+        },
+        {
+            "name": "ceiling_type",
+            "type": "enum",
+            "required": True,
+            "options": ["grid_ceiling", "gypsum_board", "pop_ceiling"],
+            "question_template": (
+                "What type of false ceiling — grid ceiling (T-bar), "
+                "gypsum board, or POP ceiling?"
+            ),
+        },
+        {
+            "name": "finish",
+            "type": "enum",
+            "required": True,
+            "options": ["plain", "cornice", "curved"],
+            "question_template": (
+                "What finish are you looking for — plain flat, with cornice border, "
+                "or curved/designer shape?"
+            ),
+        },
+    ],
+    "rate_table": [
+        {"conditions": {"ceiling_type": "grid_ceiling", "finish": "plain"}, "rate_per_sqft": 85},
+        {"conditions": {"ceiling_type": "grid_ceiling", "finish": "cornice"}, "rate_per_sqft": 100},
+        {"conditions": {"ceiling_type": "grid_ceiling", "finish": "curved"}, "rate_per_sqft": 120},
+        {"conditions": {"ceiling_type": "gypsum_board", "finish": "plain"}, "rate_per_sqft": 120},
+        {"conditions": {"ceiling_type": "gypsum_board", "finish": "cornice"}, "rate_per_sqft": 145},
+        {"conditions": {"ceiling_type": "gypsum_board", "finish": "curved"}, "rate_per_sqft": 180},
+        {"conditions": {"ceiling_type": "pop_ceiling", "finish": "plain"}, "rate_per_sqft": 95},
+        {"conditions": {"ceiling_type": "pop_ceiling", "finish": "cornice"}, "rate_per_sqft": 115},
+        {"conditions": {"ceiling_type": "pop_ceiling", "finish": "curved"}, "rate_per_sqft": 155},
+    ],
+    "modifiers": [
+        {"name": "gst", "type": "tax", "rate": 0.18},
+    ],
+    "line_item_template": [
+        {
+            "description": "False ceiling — {ceiling_type} ({finish})",
             "quantity_field": "area_sqft",
             "unit": "sqft",
             "rate_source": "computed_rate",

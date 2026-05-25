@@ -42,14 +42,12 @@ def _split_prompt(rendered: str) -> tuple[str, str]:
 
 
 class VertexGeminiClient(LLMClient):
-    def __init__(self, settings: Any) -> None:
+    def __init__(self, settings: Any, model_name: str | None = None) -> None:
         import vertexai
-        from vertexai.generative_models import GenerativeModel
 
         vertexai.init(project=settings.gcp_project_id, location=settings.gcp_location)
-        self._model_name = settings.vertex_model_flash
+        self._model_name = model_name or settings.vertex_model_flash
         self._timeout = settings.llm_call_timeout_seconds
-        self._model = GenerativeModel(self._model_name)
 
     def _call(
         self,
@@ -58,10 +56,17 @@ class VertexGeminiClient(LLMClient):
         json_mode: bool,
     ) -> tuple[str, int, int, float]:
         from google.api_core.exceptions import DeadlineExceeded, GoogleAPICallError
-        from vertexai.generative_models import GenerationConfig
+        from vertexai.generative_models import GenerationConfig, GenerativeModel
 
         rendered = render_prompt(template_name, **context)
         system_text, user_text = _split_prompt(rendered)
+
+        # system_instruction is a constructor arg, not a generate_content arg.
+        # Build a fresh model instance whenever the system prompt is non-empty.
+        model = GenerativeModel(
+            self._model_name,
+            system_instruction=system_text if system_text else None,
+        )
 
         generation_config = GenerationConfig(
             response_mime_type="application/json" if json_mode else "text/plain",
@@ -70,10 +75,9 @@ class VertexGeminiClient(LLMClient):
 
         t0 = time.perf_counter()
         try:
-            response = self._model.generate_content(
+            response = model.generate_content(
                 user_text,
                 generation_config=generation_config,
-                system_instruction=system_text if system_text else None,
             )
         except DeadlineExceeded as exc:
             raise LLMTimeoutError(f"Vertex timeout on {template_name}") from exc

@@ -1,6 +1,5 @@
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
+/** @type {import('next').NextConfig} */
+const nextConfig = {
   async rewrites() {
     // In development, proxy /api/* to the FastAPI backend so the browser
     // doesn't hit CORS issues when the frontend runs on a different port.

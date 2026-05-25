@@ -53,7 +53,9 @@ class CollectingInputsHandler(StateHandler):
         next_name = still_missing[0]
         next_def = input_defs_by_name[next_name]
         phraser = QuestionPhraser(deps.llm)
-        question = phraser.phrase_next(next_def, deps.business_name, new_collected)
+        question = phraser.phrase_next(
+            next_def, deps.business_name, new_collected, proxy_mode=deps.proxy_mode
+        )
 
         return HandlerResult(
             new_state=SessionState.collecting_inputs,

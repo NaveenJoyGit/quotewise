@@ -35,3 +35,8 @@ logs/
 
 # Generated PDFs
 data/pdfs/
+
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/tsconfig.tsbuildinfo

@@ -1,54 +1,65 @@
-from dataclasses import dataclass
-from typing import Any, Literal
+"""Inbound webhook normalization — Meta Cloud API and Twilio Messaging."""
+from __future__ import annotations
 
-MessageType = Literal["text", "voice", "image", "document", "unsupported"]
+from typing import Any
+
+from app.services.whatsapp.meta_parser import parse_meta_inbound
+from app.services.whatsapp.twilio_parser import parse_twilio_inbound
+from app.services.whatsapp.types import DocumentInfo, InboundMessage, MessageType, is_forwarded_message
+
+__all__ = [
+    "DocumentInfo",
+    "InboundMessage",
+    "MessageType",
+    "is_forwarded_message",
+    "parse_inbound",
+    "extract_document_info",
+    "detect_webhook_provider",
+]
 
 
-@dataclass(frozen=True)
-class InboundMessage:
-    """Normalized representation of a single WhatsApp inbound message."""
-
-    whatsapp_message_id: str
-    from_phone: str
-    message_type: MessageType
-    text: str | None
-    raw: dict[str, Any]
+def detect_webhook_provider(payload: dict[str, Any]) -> str:
+    """Return 'twilio' or 'meta' from envelope or payload shape."""
+    explicit = payload.get("provider")
+    if explicit in ("twilio", "meta"):
+        return explicit
+    if "MessageSid" in payload or ("From" in payload and "Body" in payload):
+        return "twilio"
+    return "meta"
 
 
 def parse_inbound(payload: dict[str, Any]) -> list[InboundMessage]:
-    """Extract InboundMessage objects from a Meta webhook payload.
-
-    Meta delivers messages nested under entry[].changes[].value.messages[].
-    Status-only callbacks (read/delivered) have no 'messages' key and produce an empty list.
-    """
-    messages: list[InboundMessage] = []
-    for entry in payload.get("entry", []):
-        for change in entry.get("changes", []):
-            value = change.get("value", {})
-            for msg in value.get("messages", []) or []:
-                messages.append(_build_message(msg))
-    return messages
+    """Parse Meta JSON webhook, Twilio form envelope, or raw Twilio form dict."""
+    provider = detect_webhook_provider(payload)
+    if provider == "twilio":
+        data = payload.get("data", payload)
+        return parse_twilio_inbound(data)
+    return parse_meta_inbound(payload)
 
 
-def _build_message(msg: dict[str, Any]) -> InboundMessage:
-    msg_type = msg.get("type", "unsupported")
-    text = msg["text"]["body"] if msg_type == "text" and "text" in msg else None
-    normalized_type: MessageType
-    if msg_type == "text":
-        normalized_type = "text"
-    elif msg_type in ("audio", "voice"):
-        normalized_type = "voice"
-    elif msg_type == "image":
-        normalized_type = "image"
-    elif msg_type == "document":
-        normalized_type = "document"
-    else:
-        normalized_type = "unsupported"
+def extract_document_info(raw: dict[str, Any]) -> DocumentInfo | None:
+    """Return document metadata for Meta or Twilio inbound raw dict."""
+    if raw.get("type") == "document":
+        doc = raw.get("document") or {}
+        media_id = doc.get("id")
+        if not media_id:
+            return None
+        return DocumentInfo(
+            media_id=media_id,
+            filename=doc.get("filename") or "upload.pdf",
+            mime_type=doc.get("mime_type"),
+        )
 
-    return InboundMessage(
-        whatsapp_message_id=msg.get("id", ""),
-        from_phone=msg.get("from", ""),
-        message_type=normalized_type,
-        text=text,
-        raw=msg,
-    )
+    num_media = int(raw.get("NumMedia") or 0)
+    if num_media > 0:
+        media_url = raw.get("MediaUrl0")
+        if not media_url:
+            return None
+        content_type = str(raw.get("MediaContentType0") or "")
+        filename = "upload.pdf" if "pdf" in content_type else "upload.bin"
+        return DocumentInfo(
+            media_id=str(media_url),
+            filename=filename,
+            mime_type=content_type or None,
+        )
+    return None

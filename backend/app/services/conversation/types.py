@@ -16,7 +16,12 @@ class HandlerDeps:
     llm: LLMClient
     now: Callable[[], datetime]
     business_name: str
-    pricing_rules: dict[str, Any]  # raw rules JSONB for the contractor+work_type
+    pricing_rules: dict[str, Any]  # raw rules JSONB for the session's current work_type
+    available_work_types: list[WorkType] = field(default_factory=list)
+    # All active pricing rules keyed by work_type.value — used by IdentifyingScopeHandler
+    # to build missing_slots after detecting work type without needing a second DB round-trip.
+    pricing_rules_by_work_type: dict[str, Any] = field(default_factory=dict)
+    proxy_mode: bool = False  # FR-002: ask contractor on behalf of forwarded buyer enquiry
 
 
 @dataclass(frozen=True)

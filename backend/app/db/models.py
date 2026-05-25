@@ -22,10 +22,13 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 from app.db.enums import (
+    AdminFlowType,
+    AdminSessionState,
     ApprovalMode,
     MessageDirection,
     MessageType,
     QuoteStatus,
+    SessionSource,
     SessionState,
     WorkType,
 )
@@ -75,6 +78,46 @@ class Contractor(Base):
 
     pricing_configs: Mapped[list["PricingConfig"]] = relationship(back_populates="contractor")
     sessions: Mapped[list["Session"]] = relationship(back_populates="contractor")
+    admin_sessions: Mapped[list["ContractorAdminSession"]] = relationship(
+        back_populates="contractor"
+    )
+
+
+class ContractorAdminSession(Base):
+    __tablename__ = "contractor_admin_sessions"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    contractor_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("contractors.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    admin_phone: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    flow_type: Mapped[AdminFlowType] = mapped_column(
+        Enum(AdminFlowType, name="admin_flow_type"), nullable=False
+    )
+    state: Mapped[AdminSessionState] = mapped_column(
+        Enum(AdminSessionState, name="admin_session_state"), nullable=False
+    )
+    work_type: Mapped[WorkType | None] = mapped_column(
+        Enum(WorkType, name="work_type"), nullable=True
+    )
+    draft_rules: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    draft_profile: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    parse_notes: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    validation_errors: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    contractor: Mapped[Contractor | None] = relationship(back_populates="admin_sessions")
 
 
 class PricingConfig(Base):
@@ -123,6 +166,12 @@ class Session(Base):
         ForeignKey("contractors.id", ondelete="CASCADE"), nullable=False, index=True
     )
     buyer_phone: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    source: Mapped[SessionSource] = mapped_column(
+        Enum(SessionSource, name="session_source"),
+        nullable=False,
+        default=SessionSource.buyer_direct,
+    )
+    forward_metadata: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     state: Mapped[SessionState] = mapped_column(
         Enum(SessionState, name="session_state"),
         nullable=False,

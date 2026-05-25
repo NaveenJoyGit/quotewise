@@ -9,7 +9,14 @@ from typing import Any
 
 from sqlalchemy.orm import Session as DBSession
 
-from app.db.enums import MessageDirection, MessageType, QuoteStatus, SessionState, WorkType
+from app.db.enums import (
+    MessageDirection,
+    MessageType,
+    QuoteStatus,
+    SessionSource,
+    SessionState,
+    WorkType,
+)
 from app.db.models import Contractor, Message, PricingConfig, Quote
 from app.db.models import Session as SessionModel
 from app.services.whatsapp.payload import InboundMessage
@@ -210,11 +217,14 @@ def update_quote_pdf_url(db: DBSession, quote: Quote, pdf_url: str) -> None:
 def find_pending_quote_for_contractor(
     db: DBSession, contractor_id: uuid.UUID
 ) -> Quote | None:
+    """Pending quote for direct buyer flow only (FR-002)."""
     return (
         db.query(Quote)
+        .join(SessionModel, Quote.session_id == SessionModel.id)
         .filter(
             Quote.contractor_id == contractor_id,
             Quote.status == QuoteStatus.pending_approval,
+            SessionModel.source == SessionSource.buyer_direct,
         )
         .order_by(Quote.created_at.asc())
         .first()

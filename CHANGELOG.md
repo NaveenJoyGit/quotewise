@@ -1,5 +1,155 @@
 # Changelog
 
+## Twilio WhatsApp adapter (2026-05-25)
+
+Goal: run the same QuoteWise flows (buyer, FR-001 admin, FR-002 forward) on **Twilio Programmable Messaging** instead of Meta Cloud API.
+
+### What was done
+
+- **`WA_PROVIDER`** — `meta` (default) or `twilio` selects inbound parser and outbound client.
+- **Twilio webhook** — `POST /webhooks/twilio/whatsapp` (form POST, `X-Twilio-Signature`, empty TwiML ack).
+- **Parsers** — `twilio_parser.py` maps `WaId`, `From`, `To`, `Forwarded`, `MediaUrl0` → `InboundMessage`.
+- **Clients** — `TwilioWhatsAppClient` (Messages API); `WhatsAppClient` facade delegates by provider.
+- **FR-002** — `Forwarded=true` on Twilio inbound (parity with Meta `context.forwarded`).
+- **Simulator** — `scripts/simulate_conversation.py --provider twilio [--forwarded]`.
+- **Tests** — `test_twilio_payload`, `test_twilio_auth`, `test_twilio_webhook`, `test_twilio_client`.
+
+### Twilio setup (quick)
+
+1. Set `WA_PROVIDER=twilio` and `TWILIO_*` in `backend/.env`.
+2. Twilio Console → WhatsApp sender → **When a message comes in**: `https://<host>/webhooks/twilio/whatsapp`.
+3. Seed contractor with `wa_phone_number_id` = your Twilio `To` number (E.164, e.g. `+14155238886`).
+4. If using ngrok, set `TWILIO_WEBHOOK_PUBLIC_URL` to the exact public webhook URL.
+
+---
+
+## FR-002 — Contractor-forwarded buyer quotes (2026-05-25)
+
+Goal: contractors forward buyer WhatsApp messages to the bot; QuoteWise runs a proxy quote conversation and auto-sends the PDF to the contractor (no approve step).
+
+**Spec:** [`feature_requests/FR-002-contractor-forwarded-buyer-quotes.md`](feature_requests/FR-002-contractor-forwarded-buyer-quotes.md)
+
+### What was done
+
+- **Feature spec** — `feature_requests/FR-002-contractor-forwarded-buyer-quotes.md` (tight/loose, routing, synthetic `buyer_phone`, commit plan).
+
+- **Forwarded payload detection** — `is_forwarded_message()`, `InboundMessage.is_forwarded`; `forwarded_text_message()` fixture and tests.
+
+- **Migration 0005** — `SessionSource` enum (`buyer_direct`, `contractor_forward`); `Session.source`, optional `forward_metadata` JSONB.
+
+- **`forwarded_quote` service** — `ForwardedQuoteEngine`, session repo (one active forward session per contractor), auto PDF delivery to contractor via `delivery.py`.
+
+- **Proxy conversation mode** — `ConversationEngine` accepts pre-bound session; `HandlerDeps.proxy_mode`; `question_phrasing.jinja` contractor-facing branch; `ReadyToQuoteHandler` skips `awaiting_approval` for forward sessions.
+
+- **Worker routing** — priority: admin → forward (active session or `context.forwarded`) → approve/reject (direct quotes only) → buyer direct → contractor help; `_handle_quote_ready` limited to `buyer_direct`.
+
+- **FLOWS.md §3b** — documents contractor-forwarded buyer quote flow.
+
+- **Tests** — `test_forward_payload`, `test_forwarded_quote_engine`, `test_forwarded_delivery`, `test_worker_task_forward`; updated M4 worker tests for new routing.
+
+### Files added
+
+```
+feature_requests/FR-002-contractor-forwarded-buyer-quotes.md
+backend/alembic/versions/0005_add_session_source.py
+backend/app/services/forwarded_quote/
+backend/tests/test_forward_payload.py
+backend/tests/test_forwarded_quote_engine.py
+backend/tests/test_forwarded_delivery.py
+backend/tests/test_worker_task_forward.py
+```
+
+### Files edited
+
+```
+backend/app/db/enums.py
+backend/app/db/models.py
+backend/app/services/whatsapp/payload.py
+backend/app/services/conversation/engine.py
+backend/app/services/conversation/types.py
+backend/app/services/conversation/session_repo.py
+backend/app/services/conversation/handlers/
+backend/app/services/conversation/question_phraser.py
+backend/app/prompts/question_phrasing.jinja
+backend/app/workers/tasks.py
+backend/tests/sample_payloads.py
+backend/tests/test_conversation_engine.py
+backend/tests/test_handlers.py
+backend/tests/test_worker_task_m4.py
+FLOWS.md
+CHANGELOG.md
+```
+
+### Deploy note
+
+Run `alembic upgrade head` to apply migration `0005_add_session_source`.
+
+---
+
+## FR-001 — WhatsApp contractor onboarding (2026-05-25)
+
+Goal: contractors can set up or update pricing via WhatsApp using prefixed messages and file uploads, reusing web onboarding persistence.
+
+**Spec:** [`feature_requests/FR-001-whatsapp-contractor-onboarding.md`](feature_requests/FR-001-whatsapp-contractor-onboarding.md)
+
+### What was done
+
+- **Feature spec** — `feature_requests/FR-001-whatsapp-contractor-onboarding.md` (tight/loose sections, state machines, commit plan).
+
+- **Phone normalization** (`app/services/whatsapp/phone.py`) — E.164 normalization and `find_contractor_by_phone()`; worker routing uses `phones_match()` instead of raw string equality.
+
+- **WhatsApp media download** — `WhatsAppClient.download_media()`; `extract_document_info()` on inbound payloads; `document_message()` test fixture.
+
+- **Migration 0004** — `contractor_admin_sessions` table with `admin_flow_type` and `admin_session_state` enums.
+
+- **`ContractorAdminSession` ORM** — stores admin flow state, draft rules/profile, parse notes, validation errors.
+
+- **`contractor_admin` service** — prefix parser (`manage-rates`, `onboard`), confirm keywords, session repo, rate summary formatter, state handlers, `ContractorAdminEngine`.
+
+- **Phase 1 — `manage-rates`** — registered contractor updates pricing via chat; text or PDF/TXT/CSV upload; Gemini via `RateCardParser`; confirm with `yes`/`cancel`; persists via `OnboardingService.save_pricing_config()` with version bump; audit `pricing.updated`.
+
+- **Phase 2 — `onboard`** — unregistered phone full signup (business name, city, slug, work type, rate card); `create_contractor` + pricing save; sends buyer link and API key once.
+
+- **Worker routing** — priority: admin session/prefix → contractor approval → buyer conversation (`tasks.py`).
+
+- **Prompt** — `onboarding_profile_extract.jinja` (optional profile paste extraction, Phase 2 ready).
+
+- **FLOWS.md §2b** — documents WhatsApp contractor admin flow.
+
+- **Tests** — `test_phone_normalize`, `test_wa_media_download`, `test_admin_prefix`, `test_contractor_admin_engine`, `test_worker_task_admin`; updated M3/M4 worker tests for new routing.
+
+### Files added
+
+```
+feature_requests/FR-001-whatsapp-contractor-onboarding.md
+backend/alembic/versions/0004_contractor_admin_sessions.py
+backend/app/services/whatsapp/phone.py
+backend/app/services/contractor_admin/
+backend/app/prompts/onboarding_profile_extract.jinja
+backend/tests/test_phone_normalize.py
+backend/tests/test_wa_media_download.py
+backend/tests/test_admin_prefix.py
+backend/tests/test_contractor_admin_engine.py
+backend/tests/test_worker_task_admin.py
+```
+
+### Files edited
+
+```
+backend/app/db/enums.py
+backend/app/db/models.py
+backend/app/services/whatsapp/client.py
+backend/app/services/whatsapp/payload.py
+backend/app/workers/tasks.py
+backend/tests/sample_payloads.py
+backend/tests/test_worker_task_m3.py
+backend/tests/test_worker_task_m4.py
+FLOWS.md
+CHANGELOG.md
+```
+
+---
+
 ## Multitenancy — contractor API key auth (2026-05-15)
 
 Goal: proper isolation between contractors so multiple contractors can coexist in the same deployment without data leakage.

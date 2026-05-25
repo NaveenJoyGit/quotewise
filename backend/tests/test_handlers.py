@@ -18,7 +18,7 @@ from app.services.conversation.handlers.quote_delivered import QuoteDeliveredHan
 from app.services.conversation.handlers.ready_to_quote import ReadyToQuoteHandler
 from app.services.conversation.types import HandlerDeps
 from app.services.llm.mock import MockLLMClient
-from app.services.pricing.seed_rules import PAINTING_RULES
+from app.services.pricing.seed_rules import FALSE_CEILING_RULES, PAINTING_RULES
 from app.services.whatsapp.payload import InboundMessage
 
 
@@ -44,6 +44,8 @@ def _session(
 ) -> object:
     """Return a lightweight namespace with the attributes handlers need."""
     from types import SimpleNamespace
+    from app.db.enums import SessionSource
+
     return SimpleNamespace(
         id=uuid.uuid4(),
         contractor_id=uuid.uuid4(),
@@ -51,15 +53,28 @@ def _session(
         collected_slots=collected_slots if collected_slots is not None else {},
         missing_slots=missing_slots if missing_slots is not None else [],
         work_type=work_type,
+        source=SessionSource.buyer_direct,
     )
 
 
-def _deps(llm=None, pricing_rules=None) -> HandlerDeps:
+def _deps(llm=None, pricing_rules=None, available_work_types=None) -> HandlerDeps:
+    rules = pricing_rules or PAINTING_RULES
+    work_types = available_work_types or []
+    # Build pricing_rules_by_work_type so IdentifyingScopeHandler can look up rules.
+    rules_map: dict = {}
+    if work_types:
+        for wt in work_types:
+            if wt == WorkType.painting:
+                rules_map[wt.value] = rules if rules is not PAINTING_RULES else PAINTING_RULES
+            elif wt == WorkType.false_ceiling:
+                rules_map[wt.value] = FALSE_CEILING_RULES
     return HandlerDeps(
         llm=llm or MockLLMClient(),
         now=lambda: datetime.now(timezone.utc),
         business_name="Test Contractor",
-        pricing_rules=pricing_rules or PAINTING_RULES,
+        pricing_rules=rules,
+        available_work_types=work_types,
+        pricing_rules_by_work_type=rules_map,
     )
 
 
@@ -103,31 +118,105 @@ class TestGreetingHandler:
 # ---------------------------------------------------------------------------
 
 class TestIdentifyingScopeHandler:
-    def test_transitions_to_collecting_inputs(self):
+    def test_single_work_type_used_directly_no_llm(self):
+        # Single available work type → no LLM call, goes straight to collecting_inputs.
+        client = MockLLMClient()  # returns nothing for work_type_detection
         handler = IdentifyingScopeHandler()
-        result = handler.handle(_session(), _inbound(), _deps())
+        result = handler.handle(
+            _session(),
+            _inbound(),
+            _deps(llm=client, available_work_types=[WorkType.painting]),
+        )
+        assert result.new_state == SessionState.collecting_inputs
+        assert result.work_type == WorkType.painting
+
+    def test_fallback_to_painting_when_no_work_types_configured(self):
+        # Empty available_work_types → fallback path returns painting.
+        handler = IdentifyingScopeHandler()
+        result = handler.handle(_session(), _inbound(), _deps(available_work_types=[]))
+        assert result.work_type == WorkType.painting
         assert result.new_state == SessionState.collecting_inputs
 
-    def test_hardcodes_painting_work_type(self):
+    def test_multi_work_type_llm_detects_painting(self):
+        client = MockLLMClient(
+            responses={"work_type_detection": {"work_type": "painting"}}
+        )
         handler = IdentifyingScopeHandler()
-        result = handler.handle(_session(), _inbound(), _deps())
+        result = handler.handle(
+            _session(),
+            _inbound("paint my bedroom"),
+            _deps(
+                llm=client,
+                available_work_types=[WorkType.painting, WorkType.false_ceiling],
+            ),
+        )
+        assert result.new_state == SessionState.collecting_inputs
         assert result.work_type == WorkType.painting
+
+    def test_multi_work_type_llm_detects_false_ceiling(self):
+        client = MockLLMClient(
+            responses={
+                "work_type_detection": {"work_type": "false_ceiling"},
+                "question_phrasing": "What area for the false ceiling?",
+            }
+        )
+        handler = IdentifyingScopeHandler()
+        result = handler.handle(
+            _session(),
+            _inbound("need gypsum ceiling"),
+            _deps(
+                llm=client,
+                pricing_rules=FALSE_CEILING_RULES,
+                available_work_types=[WorkType.painting, WorkType.false_ceiling],
+            ),
+        )
+        assert result.new_state == SessionState.collecting_inputs
+        assert result.work_type == WorkType.false_ceiling
+
+    def test_multi_work_type_ambiguous_stays_in_identifying_scope(self):
+        client = MockLLMClient(
+            responses={"work_type_detection": {"work_type": "unclear"}}
+        )
+        handler = IdentifyingScopeHandler()
+        result = handler.handle(
+            _session(),
+            _inbound("hi, I need a quote"),
+            _deps(
+                llm=client,
+                available_work_types=[WorkType.painting, WorkType.false_ceiling],
+            ),
+        )
+        assert result.new_state == SessionState.identifying_scope
+        assert result.work_type is None
+        assert "painting" in result.outbound_text.lower() or "false ceiling" in result.outbound_text.lower()
 
     def test_missing_slots_excludes_slots_with_defaults(self):
         handler = IdentifyingScopeHandler()
-        result = handler.handle(_session(), _inbound(), _deps())
+        result = handler.handle(
+            _session(),
+            _inbound(),
+            _deps(available_work_types=[WorkType.painting]),
+        )
         # 'coats' has default=2 in PAINTING_RULES, so it should NOT be in missing_slots
         assert "coats" not in (result.missing_slots or [])
 
     def test_missing_slots_includes_required_slots(self):
         handler = IdentifyingScopeHandler()
-        result = handler.handle(_session(), _inbound(), _deps())
+        result = handler.handle(
+            _session(),
+            _inbound(),
+            _deps(available_work_types=[WorkType.painting]),
+        )
         for name in ["area_sqft", "surface_type", "paint_brand_tier"]:
             assert name in (result.missing_slots or [])
 
     def test_asks_a_question(self):
         handler = IdentifyingScopeHandler()
-        result = handler.handle(_session(), _inbound(), _deps())
+        result = handler.handle(
+            _session(),
+            _inbound(),
+            _deps(available_work_types=[WorkType.painting]),
+        )
         assert len(result.outbound_text) > 0
 
 

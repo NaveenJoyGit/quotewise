@@ -47,6 +47,8 @@ def _make_contractor():
 
 
 def _make_session(state: SessionState, collected=None, missing=None, work_type=None):
+    from app.db.enums import SessionSource
+
     return SimpleNamespace(
         id=_SESSION_ID,
         contractor_id=_CONTRACTOR_ID,
@@ -54,6 +56,7 @@ def _make_session(state: SessionState, collected=None, missing=None, work_type=N
         collected_slots=collected if collected is not None else {},
         missing_slots=missing if missing is not None else [],
         work_type=work_type,
+        source=SessionSource.buyer_direct,
     )
 
 
@@ -80,7 +83,18 @@ def _make_engine(llm=None, session_obj=None, contractor=None, settings=None):
 
 @pytest.fixture
 def patched_repo(monkeypatch):
-    """Returns a namespace of mock functions that replace session_repo calls in the engine."""
+    """Returns a namespace of mock functions that replace session_repo calls in the engine.
+
+    The db mock is configured so that _load_available_work_types_and_rules returns
+    [WorkType.painting] and {painting: PAINTING_RULES}.
+    """
+    from app.db.enums import WorkType
+    from app.db.models import PricingConfig as PC
+    from types import SimpleNamespace as NS
+
+    # Build a fake PricingConfig row the engine can iterate over.
+    fake_config = NS(work_type=WorkType.painting, rules=PAINTING_RULES)
+
     mocks = SimpleNamespace(
         resolve_contractor=MagicMock(return_value=_make_contractor()),
         find_or_create_session=MagicMock(),
@@ -95,6 +109,17 @@ def patched_repo(monkeypatch):
     monkeypatch.setattr(engine_mod.session_repo, "log_message", mocks.log_message)
     monkeypatch.setattr(engine_mod.session_repo, "load_active_pricing_rules", mocks.load_active_pricing_rules)
     monkeypatch.setattr(engine_mod.session_repo, "apply_handler_result", mocks.apply_handler_result)
+
+    # Patch _load_available_work_types_and_rules on the ConversationEngine class so the
+    # DB mock doesn't need to understand SQLAlchemy query chaining.
+    monkeypatch.setattr(
+        engine_mod.ConversationEngine,
+        "_load_available_work_types_and_rules",
+        lambda self, contractor: (
+            [WorkType.painting],
+            {"painting": PAINTING_RULES},
+        ),
+    )
 
     return mocks
 
