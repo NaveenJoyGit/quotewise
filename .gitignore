@@ -35,6 +35,7 @@ logs/
 
 # Generated PDFs
 data/pdfs/
+backend/data/pdfs/
 
 # Node / Next.js
 frontend/node_modules/
