@@ -20,7 +20,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="QuoteWise", version="0.1.0")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:3000"],
+        allow_origins=[o.strip() for o in settings.cors_origins.split(",") if o.strip()],
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         allow_headers=["*"],
     )

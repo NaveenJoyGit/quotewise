@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     vertex_model_flash: str = "gemini-2.5-flash"
     vertex_model_pro: str = "gemini-2.5-pro"
     llm_call_timeout_seconds: int = 20
+    google_application_credentials: str = Field(
+        default="",
+        description="Path to GCP service account JSON file; when set, overrides ADC",
+    )
 
     # --- Session ---
     session_ttl_hours: int = 72
@@ -54,6 +58,12 @@ class Settings(BaseSettings):
     pdf_storage_dir: str = "data/pdfs"
     pdf_base_url: str = "http://localhost:8000"
     quote_validity_days: int = 30
+
+    # --- CORS ---
+    cors_origins: str = Field(
+        default="http://localhost:3000",
+        description="Comma-separated allowed origins for CORS",
+    )
 
     @property
     def wa_send_enabled(self) -> bool:

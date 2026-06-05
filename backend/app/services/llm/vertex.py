@@ -43,7 +43,22 @@ def _split_prompt(rendered: str) -> tuple[str, str]:
 
 class VertexGeminiClient(LLMClient):
     def __init__(self, settings: Any, model_name: str | None = None) -> None:
+        import os
+
         import vertexai
+
+        # Use explicit service account JSON if configured; otherwise fall back to ADC.
+        if settings.google_application_credentials:
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = (
+                settings.google_application_credentials
+            )
+            logger.info(
+                "gcp.credentials.set",
+                extra={
+                    "event_type": "gcp.credentials.set",
+                    "path": settings.google_application_credentials,
+                },
+            )
 
         vertexai.init(project=settings.gcp_project_id, location=settings.gcp_location)
         self._model_name = model_name or settings.vertex_model_flash
