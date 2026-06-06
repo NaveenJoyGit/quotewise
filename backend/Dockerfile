@@ -4,12 +4,13 @@ FROM python:3.11-slim AS builder
 # Install uv for fast dependency resolution
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-WORKDIR /build
+WORKDIR /app
 
 # Copy dependency files first (cache-friendly layer)
 COPY pyproject.toml uv.lock ./
 
 # Install dependencies into a virtual environment
+# Use /app so venv shebangs match the runtime path
 RUN uv sync --frozen --no-dev --no-install-project
 
 # ---- Stage 2: Runtime ----
@@ -29,7 +30,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Copy the virtual environment from the builder
-COPY --from=builder /build/.venv /app/.venv
+COPY --from=builder /app/.venv /app/.venv
 
 # Make sure the virtualenv Python is on PATH
 ENV PATH="/app/.venv/bin:$PATH" \
