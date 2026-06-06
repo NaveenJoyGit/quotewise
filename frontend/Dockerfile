@@ -17,7 +17,7 @@ COPY . .
 ARG BACKEND_URL=http://backend:8000
 ENV BACKEND_URL=${BACKEND_URL}
 
-RUN npm run build
+RUN npm run build && mkdir -p /app/public
 
 # ---- Stage 3: Production runner ----
 FROM node:20-alpine AS runner
@@ -33,7 +33,7 @@ COPY --from=builder /app/.next/standalone ./
 # Copy static assets (not included in standalone)
 COPY --from=builder /app/.next/static ./.next/static
 # Copy public assets if they exist
-COPY --from=builder /app/public ./public 2>/dev/null || true
+COPY --from=builder /app/public ./public
 
 EXPOSE 3000
 
