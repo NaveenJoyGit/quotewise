@@ -31,8 +31,8 @@ ADMIN_SESSION_STATE = (
 
 
 def upgrade() -> None:
-    admin_flow_type = postgresql.ENUM(*ADMIN_FLOW_TYPE, name="admin_flow_type")
-    admin_session_state = postgresql.ENUM(*ADMIN_SESSION_STATE, name="admin_session_state")
+    admin_flow_type = postgresql.ENUM(*ADMIN_FLOW_TYPE, name="admin_flow_type", create_type=False)
+    admin_session_state = postgresql.ENUM(*ADMIN_SESSION_STATE, name="admin_session_state", create_type=False)
     admin_flow_type.create(op.get_bind(), checkfirst=True)
     admin_session_state.create(op.get_bind(), checkfirst=True)
 
