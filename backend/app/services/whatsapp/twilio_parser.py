@@ -48,7 +48,11 @@ def _routing_id(to_field: str) -> str:
 
 
 def _is_forwarded(params: dict[str, Any]) -> bool:
-    return str(params.get("Forwarded", "")).lower() == "true"
+    """Twilio sets Forwarded and/or FrequentlyForwarded on WhatsApp forwards."""
+    for key in ("Forwarded", "FrequentlyForwarded"):
+        if str(params.get(key, "")).lower() == "true":
+            return True
+    return False
 
 
 def _message_type_and_text(params: dict[str, Any]) -> tuple[MessageType, str | None]:

@@ -67,11 +67,12 @@ def test_forward_start_creates_session_and_processes():
     assert wa.send_text.call_count >= 2  # intro + question
 
 
-def test_idle_contractor_gets_help():
+def test_typed_enquiry_starts_forward_session():
     contractor = _contractor()
+    db = MagicMock()
     wa = MagicMock()
     engine = ForwardedQuoteEngine(
-        db=MagicMock(),
+        db=db,
         llm=MagicMock(),
         wa=wa,
         clock=lambda: _NOW,
@@ -79,14 +80,31 @@ def test_idle_contractor_gets_help():
     )
     with patch("app.services.forwarded_quote.engine.forward_repo") as frepo:
         frepo.find_active_forward_session.return_value = None
+        created = SessionModel(
+            id=uuid.uuid4(),
+            contractor_id=contractor.id,
+            buyer_phone="fwd:pending",
+            source=SessionSource.contractor_forward,
+            state=SessionState.identifying_scope,
+            work_type=None,
+            collected_slots={},
+            missing_slots=[],
+        )
+        frepo.create_forward_session.return_value = created
         inbound = InboundMessage(
             whatsapp_message_id="1",
             from_phone="919999900001",
             message_type="text",
-            text="hello",
+            text="I want to paint my living room, 4000 sqft",
             raw={},
             is_forwarded=False,
         )
-        engine.process(contractor, inbound)
-    wa.send_text.assert_called_once()
-    assert "Forward" in wa.send_text.call_args.kwargs["body"]
+        with patch("app.services.forwarded_quote.engine.ConversationEngine") as Conv:
+            conv = MagicMock()
+            conv.process.return_value = "What finish?"
+            conv.pending_quote_snapshot = None
+            conv.last_session = created
+            Conv.return_value = conv
+            engine.process(contractor, inbound)
+    frepo.create_forward_session.assert_called_once()
+    assert wa.send_text.call_count >= 2

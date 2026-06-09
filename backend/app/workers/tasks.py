@@ -50,16 +50,40 @@ def process_inbound_message(payload: dict[str, Any]) -> dict[str, Any]:
                 from app.services.whatsapp.phone import find_contractor_by_phone, phones_match
 
                 registered = find_contractor_by_phone(db, msg.from_phone)
+                logger.info(
+                    "message.received",
+                    extra={
+                        "event_type": "message.received",
+                        "from_phone": msg.from_phone,
+                        "is_forwarded": msg.is_forwarded,
+                        "forwarded_param": msg.raw.get("Forwarded"),
+                        "frequently_forwarded_param": msg.raw.get("FrequentlyForwarded"),
+                        "registered_contractor": registered is not None,
+                    },
+                )
                 if _should_route_admin(db, msg, registered):
+                    route = "admin"
                     _route_admin_message(msg, db, wa, llm, settings, registered, contractor)
                 elif registered and _should_route_forward(db, registered, msg):
+                    route = "forward"
                     _route_forwarded_quote(registered, msg, db, wa, llm, settings)
                 elif registered and _should_route_approval(msg, db, registered):
+                    route = "approval"
                     _route_contractor_approval(contractor, msg, db, wa, settings)
                 elif registered and phones_match(msg.from_phone, contractor.phone):
+                    route = "contractor_help"
                     wa.send_text(to=contractor.phone, body=_CONTRACTOR_HELP)
                 else:
+                    route = "buyer"
                     _route_buyer_message(contractor, msg, db, wa, llm, settings)
+                logger.info(
+                    "message.routed",
+                    extra={
+                        "event_type": "message.routed",
+                        "from_phone": msg.from_phone,
+                        "route": route,
+                    },
+                )
                 processed += 1
             except Exception as exc:
                 logger.error(
@@ -86,6 +110,7 @@ def _should_route_admin(db, msg, registered) -> bool:
 def _should_route_forward(db, contractor, msg) -> bool:
     from datetime import datetime, timezone
 
+    from app.services.approval.keywords import ApprovalAction, parse_approval_keyword
     from app.services.forwarded_quote import session_repo as forward_repo
 
     if msg.is_forwarded:
@@ -93,7 +118,12 @@ def _should_route_forward(db, contractor, msg) -> bool:
     active = forward_repo.find_active_forward_session(
         db, contractor.id, datetime.now(timezone.utc)
     )
-    return active is not None
+    if active is not None:
+        return True
+    # Twilio/WhatsApp may omit Forwarded=true; allow typing or pasting enquiry text.
+    if msg.message_type == "text" and msg.text and msg.text.strip():
+        return parse_approval_keyword(msg.text) == ApprovalAction.unknown
+    return False
 
 
 def _should_route_approval(msg, db, contractor) -> bool:

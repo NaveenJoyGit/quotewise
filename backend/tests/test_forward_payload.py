@@ -12,6 +12,10 @@ def test_is_forwarded_message_false():
     assert is_forwarded_message({"type": "text", "text": {"body": "hi"}}) is False
 
 
+def test_is_forwarded_message_frequently_forwarded_twilio():
+    assert is_forwarded_message({"Forwarded": "false", "FrequentlyForwarded": "true"}) is True
+
+
 def test_parse_inbound_forwarded_flag():
     msgs = parse_inbound(forwarded_text_message())
     assert len(msgs) == 1

@@ -5,11 +5,14 @@ MessageType = Literal["text", "voice", "image", "document", "unsupported"]
 
 
 def is_forwarded_message(raw: dict[str, Any]) -> bool:
-    """Meta: context.forwarded. Twilio: Forwarded=true (also checked in twilio_parser)."""
+    """Meta: context.forwarded. Twilio: Forwarded / FrequentlyForwarded (see twilio_parser)."""
     context = raw.get("context") or {}
     if context.get("forwarded"):
         return True
-    return str(raw.get("Forwarded", "")).lower() == "true"
+    for key in ("Forwarded", "FrequentlyForwarded"):
+        if str(raw.get(key, "")).lower() == "true":
+            return True
+    return False
 
 
 @dataclass(frozen=True)

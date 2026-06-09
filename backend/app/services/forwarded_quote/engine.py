@@ -52,10 +52,6 @@ class ForwardedQuoteEngine:
         now = self._clock()
         session = forward_repo.find_active_forward_session(self._db, contractor.id, now)
 
-        if session is None and not inbound.is_forwarded:
-            self._wa.send_text(to=contractor.phone, body=_HELP_IDLE)
-            return
-
         if session is None:
             if inbound.message_type != "text":
                 self._wa.send_text(to=contractor.phone, body=_NON_TEXT)

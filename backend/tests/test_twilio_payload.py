@@ -24,6 +24,13 @@ def test_parse_twilio_forwarded():
     assert msgs[0].is_forwarded is True
 
 
+def test_parse_twilio_frequently_forwarded():
+    params = twilio_text_message(body="Need painting 1000 sqft")
+    params["FrequentlyForwarded"] = "true"
+    msgs = parse_inbound({"provider": "twilio", "data": params})
+    assert msgs[0].is_forwarded is True
+
+
 def test_parse_twilio_raw_shape_detection():
     params = twilio_text_message()
     msgs = parse_inbound(params)
