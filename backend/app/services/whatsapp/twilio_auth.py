@@ -4,7 +4,6 @@ from __future__ import annotations
 import base64
 import hmac
 import hashlib
-from urllib.parse import urlparse, urlunparse
 
 
 def compute_twilio_signature(auth_token: str, url: str, params: dict[str, str]) -> str:
@@ -19,42 +18,6 @@ def compute_twilio_signature(auth_token: str, url: str, params: dict[str, str]) 
     return base64.b64encode(digest).decode()
 
 
-def _signature_url_variants(url: str) -> list[str]:
-    """URLs Twilio may have signed (with and without explicit :443/:80).
-
-    Mirrors twilio-python RequestValidator.validate() — Twilio's backend is
-    inconsistent about including the port in the signed URL string.
-    """
-    parsed = urlparse(url)
-    hostname = parsed.hostname or parsed.netloc.split(":")[0]
-
-    without_port = urlunparse(
-        (parsed.scheme, hostname, parsed.path, parsed.params, parsed.query, parsed.fragment)
-    )
-
-    if parsed.port:
-        with_port = url
-    else:
-        default_port = 443 if parsed.scheme == "https" else 80
-        with_port = urlunparse(
-            (
-                parsed.scheme,
-                f"{hostname}:{default_port}",
-                parsed.path,
-                parsed.params,
-                parsed.query,
-                parsed.fragment,
-            )
-        )
-
-    variants: list[str] = []
-    for candidate in (without_port, with_port):
-        normalized = candidate.rstrip("/")
-        if normalized not in variants:
-            variants.append(normalized)
-    return variants
-
-
 def verify_twilio_signature(
     auth_token: str,
     url: str,
@@ -66,8 +29,5 @@ def verify_twilio_signature(
         return True
     if not signature:
         return False
-    for candidate_url in _signature_url_variants(url):
-        expected = compute_twilio_signature(auth_token, candidate_url, params)
-        if hmac.compare_digest(expected, signature):
-            return True
-    return False
+    expected = compute_twilio_signature(auth_token, url, params)
+    return hmac.compare_digest(expected, signature)

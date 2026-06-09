@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-from urllib.parse import parse_qsl
 
 from fastapi import APIRouter, Header, HTTPException, Request, Response, status
 
@@ -24,14 +23,8 @@ async def receive(
 ) -> Response:
     """Parse form POST, verify signature, enqueue Celery task, return empty TwiML."""
     settings = get_settings()
-    # Parse raw body so empty values are preserved (Twilio includes them in the signature).
-    raw_body = await request.body()
-    params = dict(
-        parse_qsl(
-            raw_body.decode("utf-8", errors="replace"),
-            keep_blank_values=True,
-        )
-    )
+    form = await request.form()
+    params = {key: str(value) for key, value in form.items()}
 
     webhook_url = _webhook_url(request, settings)
     if not verify_twilio_signature(
@@ -42,12 +35,7 @@ async def receive(
     ):
         logger.warning(
             "twilio.webhook.signature_invalid",
-            extra={
-                "event_type": "twilio.webhook.signature_invalid",
-                "signature_present": x_twilio_signature is not None,
-                "webhook_url": webhook_url,
-                "param_count": len(params),
-            },
+            extra={"event_type": "twilio.webhook.signature_invalid"},
         )
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="invalid signature")
 
