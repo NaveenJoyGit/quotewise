@@ -44,3 +44,13 @@ def test_matches_twilio_documented_algorithm():
         hmac.new(auth_token.encode(), wrong_data.encode(), hashlib.sha1).digest()
     ).decode()
     assert wrong_sig != expected_sig
+
+
+def test_verify_accepts_signature_signed_with_explicit_port():
+    """Twilio may sign with :443 even when the configured URL omits the port."""
+    auth_token = "secret"
+    url_configured = "https://api.example.com/webhooks/twilio/whatsapp"
+    url_signed = "https://api.example.com:443/webhooks/twilio/whatsapp"
+    params = {"Body": "manage-rates", "From": "whatsapp:+91999"}
+    sig = compute_twilio_signature(auth_token, url_signed, params)
+    assert verify_twilio_signature(auth_token, url_configured, params, sig)
