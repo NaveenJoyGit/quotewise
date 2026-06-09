@@ -1,0 +1,11 @@
+category,surface_type,rate_per_sqft,notes
+basic,new_wall,14,Tractor Emulsion / Apex
+basic,repaint_good_condition,12,
+basic,repaint_damaged,20,includes minor putty
+premium,new_wall,22,Royale / Impressions
+premium,repaint_good_condition,20,
+premium,repaint_damaged,28,
+luxury,new_wall,32,Royale Aspira / Velvet Touch
+luxury,repaint_good_condition,30,
+luxury,repaint_damaged,40,
+addon,extra_coat_per_sqft,3,per coat beyond 2 coats
