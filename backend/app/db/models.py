@@ -165,7 +165,7 @@ class Session(Base):
     contractor_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("contractors.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    buyer_phone: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    buyer_phone: Mapped[str] = mapped_column(String(48), nullable=False, index=True)
     source: Mapped[SessionSource] = mapped_column(
         Enum(SessionSource, name="session_source"),
         nullable=False,
@@ -237,7 +237,7 @@ class Quote(Base):
     contractor_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("contractors.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    buyer_phone: Mapped[str] = mapped_column(String(32), nullable=False)
+    buyer_phone: Mapped[str] = mapped_column(String(48), nullable=False)
     work_type: Mapped[WorkType] = mapped_column(
         Enum(WorkType, name="work_type"), nullable=False
     )

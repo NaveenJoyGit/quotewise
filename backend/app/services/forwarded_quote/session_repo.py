@@ -57,6 +57,7 @@ def create_forward_session(
     )
     db.add(session)
     db.flush()
+    # fwd:{uuid} is 40 chars — requires buyer_phone VARCHAR(48) (migration 0006).
     session.buyer_phone = f"fwd:{session.id}"
     logger.info(
         "forward_session.created",
