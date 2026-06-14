@@ -186,6 +186,6 @@ def save_pricing_config(
     return PricingConfigResponse(
         id=config.id,
         contractor_id=config.contractor_id,
-        work_type=config.work_type.value,
+        work_type=config.work_type,
         version=config.version,
     )

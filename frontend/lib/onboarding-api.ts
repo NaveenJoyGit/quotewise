@@ -77,7 +77,7 @@ export async function savePricingConfig(
   apiKey: string,
 ): Promise<PricingConfigResponse> {
   const res = await fetch(
-    `${BACKEND_URL}/api/v1/contractors/${contractorId}/pricing/${workType}`,
+    `${BACKEND_URL}/api/v1/contractors/${contractorId}/pricing/${encodeURIComponent(workType)}`,
     {
       method: "POST",
       headers: {

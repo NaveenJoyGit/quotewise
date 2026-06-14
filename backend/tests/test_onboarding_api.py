@@ -56,7 +56,7 @@ def _fake_config(**overrides):
     defaults = {
         "id": uuid.uuid4(),
         "contractor_id": uuid.uuid4(),
-        "work_type": SimpleNamespace(value="painting"),
+        "work_type": "painting",
         "version": 1,
     }
     return SimpleNamespace(**{**defaults, **overrides})

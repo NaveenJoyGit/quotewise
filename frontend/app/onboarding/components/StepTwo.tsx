@@ -47,14 +47,19 @@ export default function StepTwo({ contractorId, apiKey, onComplete }: Props) {
     );
   }
 
+  function toWorkTypeSlug(name: string): string {
+    return name.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  }
+
   async function handleSave() {
     if (!parsed) return;
     setSaveError(null);
     setSaving(true);
     try {
+      const slug = toWorkTypeSlug(workTypeHint);
       const updatedRules = { ...parsed.rules, rate_table: rateRows };
-      await savePricingConfig(contractorId, workTypeHint, updatedRules, apiKey);
-      onComplete(workTypeHint);
+      await savePricingConfig(contractorId, slug, updatedRules, apiKey);
+      onComplete(slug);
     } catch (err: unknown) {
       setSaveError(err instanceof Error ? err.message : "Save failed.");
     } finally {
