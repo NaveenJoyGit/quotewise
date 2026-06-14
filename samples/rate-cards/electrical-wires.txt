@@ -1,0 +1,35 @@
+ELECTRICAL WIRE SUPPLY RATES
+(Standard 90m Coils - FRLS/FR Grade)
+
+Rates are per coil (90 meters).
+All rates are exclusive of 18% GST.
+
+1.0 sq mm wire (Lighting circuits & UPS): 
+- Polycab: Rs. 1050
+- Finolex: Rs. 1100
+- Havells: Rs. 1150
+
+1.5 sq mm wire (Standard power points, 6A sockets):
+- Polycab: Rs. 1450
+- Finolex: Rs. 1550
+- Havells: Rs. 1600
+
+2.5 sq mm wire (AC, Geyser points, 16A sockets):
+- Polycab: Rs. 2300
+- Finolex: Rs. 2450
+- Havells: Rs. 2500
+
+4.0 sq mm wire (Main lines to DB / Heavy appliances):
+- Polycab: Rs. 3400
+- Finolex: Rs. 3550
+- Havells: Rs. 3700
+
+6.0 sq mm wire (Sub-main / Meter to DB lines):
+- Polycab: Rs. 4900
+- Finolex: Rs. 5100
+- Havells: Rs. 5300
+
+Terms & Conditions:
+- Standard coil length is 90 meters exactly.
+- Assumes FR (Fire Retardant) or FRLS (Fire Retardant Low Smoke) variants.
+- Delivery charges extra for orders under 50 coils.

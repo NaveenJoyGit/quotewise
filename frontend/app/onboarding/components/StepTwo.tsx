@@ -5,7 +5,7 @@ import { ParsedRulesResponse, parseRateCard, savePricingConfig } from "@/lib/onb
 
 interface RateRow {
   conditions: Record<string, string>;
-  rate_per_sqft: number;
+  base_rate: number;
 }
 
 interface Props {
@@ -33,7 +33,7 @@ export default function StepTwo({ contractorId, apiKey, onComplete }: Props) {
       const result = await parseRateCard(file, workTypeHint);
       setParsed(result);
       const table = (result.rules as { rate_table?: RateRow[] }).rate_table ?? [];
-      setRateRows(table.map((r) => ({ ...r, rate_per_sqft: Number(r.rate_per_sqft) })));
+      setRateRows(table.map((r) => ({ ...r, base_rate: Number(r.base_rate) })));
     } catch (err: unknown) {
       setParseError(err instanceof Error ? err.message : "Parsing failed.");
     } finally {
@@ -43,7 +43,7 @@ export default function StepTwo({ contractorId, apiKey, onComplete }: Props) {
 
   function handleRateChange(idx: number, value: string) {
     setRateRows((rows) =>
-      rows.map((r, i) => (i === idx ? { ...r, rate_per_sqft: parseFloat(value) || 0 } : r))
+      rows.map((r, i) => (i === idx ? { ...r, base_rate: parseFloat(value) || 0 } : r))
     );
   }
 
@@ -141,7 +141,7 @@ export default function StepTwo({ contractorId, apiKey, onComplete }: Props) {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-4 py-2 text-left font-medium text-gray-600">Conditions</th>
-                  <th className="px-4 py-2 text-right font-medium text-gray-600">Rate (₹/sqft)</th>
+                  <th className="px-4 py-2 text-right font-medium text-gray-600">Base Rate (₹)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -157,7 +157,7 @@ export default function StepTwo({ contractorId, apiKey, onComplete }: Props) {
                         type="number"
                         min="0"
                         step="0.5"
-                        value={row.rate_per_sqft}
+                        value={row.base_rate}
                         onChange={(e) => handleRateChange(idx, e.target.value)}
                         className="w-24 text-right border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
                       />
