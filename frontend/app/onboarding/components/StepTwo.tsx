@@ -98,7 +98,7 @@ export default function StepTwo({ contractorId, apiKey, onComplete }: Props) {
 
       <button
         onClick={handleParse}
-        disabled={!file || parsing}
+        disabled={!file || !workTypeHint.trim() || parsing}
         className="bg-blue-600 text-white rounded-md px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
       >
         {parsing ? "Parsing with AI..." : "Parse with AI"}
@@ -184,7 +184,7 @@ export default function StepTwo({ contractorId, apiKey, onComplete }: Props) {
       {parsed && (
         <button
           onClick={handleSave}
-          disabled={saving}
+          disabled={!workTypeHint.trim() || saving}
           className="w-full bg-green-600 text-white rounded-md py-2 text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition-colors"
         >
           {saving ? "Saving..." : "Save Pricing & Continue"}
