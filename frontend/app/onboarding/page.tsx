@@ -15,7 +15,7 @@ const STEPS = [
 export default function OnboardingPage() {
   const [step, setStep] = useState(1);
   const [contractor, setContractor] = useState<ContractorResponse | null>(null);
-  const [workType, setWorkType] = useState<string>("painting");
+  const [workType, setWorkType] = useState<string>("");
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-start justify-center pt-12 px-4">

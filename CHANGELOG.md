@@ -1,5 +1,20 @@
 # Changelog
 
+## FR-003 — Flexible Work Types (2026-06-13)
+
+Goal: Overhaul QuoteWise to support dynamic, flexible work types (e.g. electrical, plumbing, carpentry) instead of hardcoded painting and false ceiling.
+
+### What was done
+
+- **DB Migration** — Replaced `WorkType` enum with generic `VARCHAR(64)` strings in `contractor_admin_sessions`, `pricing_configs`, `sessions`, and `quotes` tables. Removed `WorkType` enum class.
+- **Pricing Evaluator & Schemas** — Refactored schemas to make it generic for any trade. `rate_per_sqft` has been renamed to `base_rate`, and `amount_per_sqft_per_extra_unit` to `amount_per_extra_unit`. `quantity_field` in `line_item_template` now correctly accepts generic units.
+- **LLM Rate Card Ingest** — Rewrote `rate_card_ingest.jinja` prompt to be trade-agnostic and infer `quantity_field` and `base_formula` (e.g. `points * base_rate` vs `area_sqft * base_rate`) directly from the rate card. Removed painting-specific rules.
+- **Contractor Handlers & Work Type Detection** — Replaced static `parse_work_type` with an automated slugifier (`text.strip().lower().replace(' ', '_')`). Added `electrical` and `plumbing` few-shot examples to `work_type_detection.jinja`.
+- **Frontend** — Replaced hardcoded "painting" string initializers with empty strings and changed the `StepTwo` selection box to an `input` element to allow free-form trade names.
+- **Tests** — Refactored all test suites to drop the `WorkType` enum reference and reflect the updated schema variables (`base_rate`, etc.).
+
+---
+
 ## Twilio WhatsApp adapter (2026-05-25)
 
 Goal: run the same QuoteWise flows (buyer, FR-001 admin, FR-002 forward) on **Twilio Programmable Messaging** instead of Meta Cloud API.

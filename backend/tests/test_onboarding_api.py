@@ -13,7 +13,7 @@ from app.services.pricing.seed_rules import PAINTING_RULES
 # A minimal valid rules dict that passes PricingRules validation.
 _VALID_RULES = {
     "schema_version": 1,
-    "base_formula": "area_sqft * rate_per_sqft",
+    "base_formula": "area_sqft * base_rate",
     "inputs": [
         {
             "name": "area_sqft",
@@ -22,7 +22,7 @@ _VALID_RULES = {
             "question_template": "What area?",
         }
     ],
-    "rate_table": [{"conditions": {"surface_type": "new_wall"}, "rate_per_sqft": 14}],
+    "rate_table": [{"conditions": {"surface_type": "new_wall"}, "base_rate": 14}],
     "modifiers": [{"name": "gst", "type": "tax", "rate": 0.18}],
     "line_item_template": [
         {

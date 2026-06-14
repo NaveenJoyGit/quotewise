@@ -7,7 +7,6 @@ from typing import Any
 from pydantic import ValidationError
 from sqlalchemy.orm import Session as DBSession
 
-from app.db.enums import WorkType
 from app.db.models import Contractor, PricingConfig
 from app.services.pricing.schemas import PricingRules
 
@@ -60,7 +59,7 @@ class OnboardingService:
     def save_pricing_config(
         self,
         contractor_id: uuid.UUID,
-        work_type: WorkType,
+        work_type: str,
         rules: dict[str, Any],
     ) -> PricingConfig:
         """Validate and persist a pricing config. Deactivates any existing active config."""

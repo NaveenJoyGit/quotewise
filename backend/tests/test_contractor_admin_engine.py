@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.db.enums import AdminFlowType, AdminSessionState, WorkType
+from app.db.enums import AdminFlowType, AdminSessionState
 from app.db.models import ContractorAdminSession
 from app.services.contractor_admin.engine import ContractorAdminEngine
 from app.services.rate_card.parser import ParsedRateCard
@@ -85,7 +85,7 @@ def test_review_save_pricing(engine_setup):
         admin_phone="+919999900001",
         flow_type=AdminFlowType.manage_rates,
         state=AdminSessionState.reviewing,
-        work_type=WorkType.painting,
+        work_type="painting",
         draft_rules=_VALID_RULES,
         parse_notes=[],
         validation_errors=[],

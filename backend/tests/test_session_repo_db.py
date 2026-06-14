@@ -76,11 +76,10 @@ def _make_contractor(session, phone: str, slug: str, wa_id: str | None = None):
 
 
 def _make_pricing_config(session, contractor_id, work_type):
-    from app.db.enums import WorkType
     from app.db.models import PricingConfig
     from app.services.pricing.seed_rules import FALSE_CEILING_RULES, PAINTING_RULES
 
-    rules = PAINTING_RULES if work_type == WorkType.painting else FALSE_CEILING_RULES
+    rules = PAINTING_RULES if work_type == "painting" else FALSE_CEILING_RULES
     pc = PricingConfig(
         contractor_id=contractor_id,
         work_type=work_type,
@@ -196,18 +195,18 @@ def test_log_message(db_session):
 
 
 def test_create_quote(db_session):
-    from app.db.enums import QuoteStatus, WorkType
+    from app.db.enums import QuoteStatus
     from app.services.conversation import session_repo
     from app.services.pricing.evaluator import evaluate_quote
     from app.services.pricing.seed_rules import PAINTING_RULES
 
     c = _make_contractor(db_session, "+911111111106", "test-create-quote")
-    pc = _make_pricing_config(db_session, c.id, WorkType.painting)
+    pc = _make_pricing_config(db_session, c.id, "painting")
     db_session.commit()
 
     buyer = "+919000000005"
     sess = session_repo.find_or_create_session(db_session, c.id, buyer, _NOW, ttl_hours=72)
-    sess.work_type = WorkType.painting
+    sess.work_type = "painting"
     db_session.commit()
 
     evaluated = evaluate_quote(
@@ -242,7 +241,7 @@ def test_create_quote(db_session):
 
 
 def test_apply_handler_result_state_transition(db_session):
-    from app.db.enums import SessionState, WorkType
+    from app.db.enums import SessionState
     from app.services.conversation import session_repo
 
     c = _make_contractor(db_session, "+911111111107", "test-apply-handler")

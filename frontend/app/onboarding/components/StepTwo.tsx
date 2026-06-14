@@ -16,7 +16,7 @@ interface Props {
 
 export default function StepTwo({ contractorId, apiKey, onComplete }: Props) {
   const [file, setFile] = useState<File | null>(null);
-  const [workTypeHint, setWorkTypeHint] = useState("painting");
+  const [workTypeHint, setWorkTypeHint] = useState("");
   const [parsed, setParsed] = useState<ParsedRulesResponse | null>(null);
   const [rateRows, setRateRows] = useState<RateRow[]>([]);
   const [parsing, setParsing] = useState(false);
@@ -69,14 +69,13 @@ export default function StepTwo({ contractorId, apiKey, onComplete }: Props) {
         <label className="block text-sm font-medium text-gray-700 mb-1">
           Work type
         </label>
-        <select
+        <input
+          type="text"
+          placeholder="e.g. electrical, plumbing, painting"
           value={workTypeHint}
           onChange={(e) => setWorkTypeHint(e.target.value)}
-          className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="painting">Painting</option>
-          <option value="false_ceiling">False Ceiling</option>
-        </select>
+          className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
       </div>
 
       <div>

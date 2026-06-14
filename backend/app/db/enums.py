@@ -1,11 +1,6 @@
 import enum
 
 
-class WorkType(str, enum.Enum):
-    painting = "painting"
-    false_ceiling = "false_ceiling"
-
-
 class ApprovalMode(str, enum.Enum):
     always_approve = "always_approve"
     auto_approve_above_confidence = "auto_approve_above_confidence"

@@ -33,9 +33,9 @@ Explicitly **not** building in MVP:
 - Multi-language beyond English (Hindi/Kannada is post-MVP)
 - Team member / multi-user accounts (single contractor per account in MVP)
 
-### 1.3 Two work types supported in MVP
+### 1.3 Flexible Work Types in MVP
 
-Only **painting** and **false ceiling** are supported in MVP. These are the two most deterministic work types. All architecture must be extensible to add work types without code changes — they should be data-driven (see section 3.2).
+The system supports any generic work type deterministically. The architecture is data-driven, meaning contractors can configure their own work type rules without code changes (see section 3.2).
 
 ---
 
@@ -82,7 +82,7 @@ Contractor
 PricingConfig
   id (uuid, pk)
   contractor_id (fk → Contractor)
-  work_type (enum: painting, false_ceiling)  -- extensible
+  work_type (string, 64)
   is_active (bool)
   rules (jsonb)  -- see section 3.2 for schema
   last_updated_at (timestamp)
@@ -93,7 +93,7 @@ Session
   contractor_id (fk → Contractor)
   buyer_phone (string, E.164)
   state (enum: greeting, identifying_scope, collecting_inputs, clarifying, ready_to_quote, awaiting_approval, quote_delivered, closed)
-  work_type (enum, nullable)
+  work_type (string, 64, nullable)
   collected_slots (jsonb)  -- key-value of filled slots
   missing_slots (jsonb)  -- array of slot names still needed
   last_message_at (timestamp)
@@ -114,7 +114,7 @@ Quote
   session_id (fk → Session)
   contractor_id (fk → Contractor)
   buyer_phone (string)
-  work_type (enum)
+  work_type (string, 64)
   line_items (jsonb)  -- array of { description, quantity, unit, rate, amount }
   subtotal (decimal)
   gst_amount (decimal)
@@ -142,7 +142,7 @@ This is the heart of the system. It must be flexible enough for future work type
 ```json
 {
   "schema_version": 1,
-  "base_formula": "area_sqft * rate_per_sqft",
+  "base_formula": "area_sqft * base_rate",
   "inputs": [
     {
       "name": "area_sqft",
@@ -174,14 +174,14 @@ This is the heart of the system. It must be flexible enough for future work type
     }
   ],
   "rate_table": [
-    { "conditions": { "paint_brand_tier": "basic", "surface_type": "new_wall" }, "rate_per_sqft": 14 },
-    { "conditions": { "paint_brand_tier": "basic", "surface_type": "repaint_good_condition" }, "rate_per_sqft": 12 },
-    { "conditions": { "paint_brand_tier": "basic", "surface_type": "repaint_damaged" }, "rate_per_sqft": 20 },
-    { "conditions": { "paint_brand_tier": "premium", "surface_type": "new_wall" }, "rate_per_sqft": 22 },
+    { "conditions": { "paint_brand_tier": "basic", "surface_type": "new_wall" }, "base_rate": 14 },
+    { "conditions": { "paint_brand_tier": "basic", "surface_type": "repaint_good_condition" }, "base_rate": 12 },
+    { "conditions": { "paint_brand_tier": "basic", "surface_type": "repaint_damaged" }, "base_rate": 20 },
+    { "conditions": { "paint_brand_tier": "premium", "surface_type": "new_wall" }, "base_rate": 22 },
     ...
   ],
   "modifiers": [
-    { "name": "extra_coat", "trigger": "coats > 2", "adjustment": "+3 per sqft per extra coat" },
+    { "name": "extra_coat", "trigger": "coats > 2", "adjustment": "+3 per extra coat" },
     { "name": "gst", "type": "tax", "rate": 0.18 }
   ],
   "line_item_template": [

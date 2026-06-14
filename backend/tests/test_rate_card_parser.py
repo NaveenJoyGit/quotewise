@@ -14,7 +14,7 @@ from app.services.rate_card.parser import RateCardParser
 # ---------------------------------------------------------------------------
 _VALID_RULES = {
     "schema_version": 1,
-    "base_formula": "area_sqft * rate_per_sqft",
+    "base_formula": "area_sqft * base_rate",
     "inputs": [
         {
             "name": "area_sqft",
@@ -23,7 +23,7 @@ _VALID_RULES = {
             "question_template": "What area?",
         }
     ],
-    "rate_table": [{"conditions": {"surface_type": "new_wall"}, "rate_per_sqft": 14}],
+    "rate_table": [{"conditions": {"surface_type": "new_wall"}, "base_rate": 14}],
     "modifiers": [{"name": "gst", "type": "tax", "rate": 0.18}],
     "line_item_template": [
         {"description": "Work", "quantity_field": "area_sqft", "unit": "sqft", "rate_source": "computed_rate"}
@@ -41,7 +41,7 @@ class TestRateCardParser:
         result = RateCardParser(llm).parse("painting rates: Rs. 14 per sqft")
         assert result.validation_errors == []
         assert result.notes == []
-        assert result.rules["base_formula"] == "area_sqft * rate_per_sqft"
+        assert result.rules["base_formula"] == "area_sqft * base_rate"
 
     def test_notes_stripped_from_rules_and_returned(self):
         rules_with_notes = {**_VALID_RULES, "_notes": ["Assumed 18% GST"]}

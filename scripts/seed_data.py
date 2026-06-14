@@ -19,7 +19,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
 from app.core.logging import configure_logging  # noqa: E402
 from app.db.base import SessionLocal  # noqa: E402
-from app.db.enums import WorkType  # noqa: E402
 from app.db.models import Contractor, PricingConfig  # noqa: E402
 from app.services.pricing.seed_rules import FALSE_CEILING_RULES, PAINTING_RULES  # noqa: E402
 
@@ -32,8 +31,8 @@ DEV_CONTRACTOR = {
 }
 
 WORK_TYPES = [
-    (WorkType.painting, PAINTING_RULES),
-    (WorkType.false_ceiling, FALSE_CEILING_RULES),
+    ("painting", PAINTING_RULES),
+    ("false_ceiling", FALSE_CEILING_RULES),
 ]
 
 log = logging.getLogger(__name__)

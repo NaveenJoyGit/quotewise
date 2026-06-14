@@ -15,7 +15,6 @@ from app.db.enums import (
     QuoteStatus,
     SessionSource,
     SessionState,
-    WorkType,
 )
 from app.db.models import Contractor, Message, PricingConfig, Quote
 from app.db.models import Session as SessionModel
@@ -103,7 +102,7 @@ def find_or_create_session(
 def load_active_pricing_rules(
     db: DBSession,
     contractor_id: uuid.UUID,
-    work_type: WorkType,
+    work_type: str,
 ) -> dict[str, Any]:
     config = (
         db.query(PricingConfig)
@@ -145,7 +144,7 @@ def log_message(
 def load_active_pricing_config(
     db: DBSession,
     contractor_id: uuid.UUID,
-    work_type: WorkType,
+    work_type: str,
 ) -> PricingConfig:
     config = (
         db.query(PricingConfig)
@@ -172,7 +171,6 @@ def create_quote(
     validity_days: int = 30,
 ) -> Quote:
     """Persist a Quote row from an EvaluatedQuote snapshot. Status → pending_approval."""
-    from app.db.enums import WorkType as WT
 
     work_type = session.work_type or WT.painting
     line_items = snapshot.get("line_items", [])
@@ -236,7 +234,7 @@ def apply_handler_result(
     new_state: SessionState,
     collected_slots_update: dict[str, Any],
     missing_slots: list[str] | None,
-    work_type: WorkType | None,
+    work_type: str | None,
     now: datetime,
     ttl_hours: int,
 ) -> None:

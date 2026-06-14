@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 import re
 
-from app.db.enums import AdminFlowType, AdminSessionState, WorkType
+from app.db.enums import AdminFlowType, AdminSessionState
 from app.db.models import ContractorAdminSession
 from app.services.contractor_admin.keywords import AdminConfirmAction, parse_admin_confirm
 from app.services.contractor_admin.prefix import AdminPrefix
@@ -29,7 +29,7 @@ _MSG_ONBOARD_ALREADY_REGISTERED = (
 )
 _MSG_ASK_WORK_TYPE = (
     "Which work type are you updating?\n"
-    "Reply *painting* or *false_ceiling*."
+    "Reply with a type (e.g., *painting*, *electrical*, *plumbing*)."
 )
 _MSG_ASK_CONTENT = (
     "Send your rate card as a message (user paste) or upload a PDF, TXT, or CSV file."
@@ -52,13 +52,9 @@ _MSG_ONBOARD_DONE = (
 )
 
 
-def parse_work_type(text: str) -> WorkType | None:
+def parse_work_type(text: str) -> str | None:
     normalized = text.strip().lower().replace("-", "_").replace(" ", "_")
-    if normalized in ("painting", "paint"):
-        return WorkType.painting
-    if normalized in ("false_ceiling", "ceiling", "false"):
-        return WorkType.false_ceiling
-    return None
+    return normalized if normalized else None
 
 
 def handle_start(

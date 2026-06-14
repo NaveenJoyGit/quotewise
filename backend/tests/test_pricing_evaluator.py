@@ -260,7 +260,7 @@ def test_modifier_condition_operators(op, coats_value, baseline, triggers):
             "condition": {"field": "coats", "op": op, "value": baseline},
             "over_field": "coats",
             "over_baseline": 0,
-            "amount_per_sqft_per_extra_unit": 1,
+                "amount_per_extra_unit": 1,
             "quantity_field": "area_sqft",
         }
     ]
@@ -287,7 +287,7 @@ def test_modifier_condition_missing_field_not_met():
             "condition": {"field": "nonexistent", "op": "gt", "value": 0},
             "over_field": "coats",
             "over_baseline": 0,
-            "amount_per_sqft_per_extra_unit": 10,
+                "amount_per_extra_unit": 10,
             "quantity_field": "area_sqft",
         }
     ]

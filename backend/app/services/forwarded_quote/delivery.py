@@ -47,7 +47,7 @@ def deliver_to_contractor(
     pdf_url = svc.generate(quote, contractor)
     session_repo.update_quote_pdf_url(db, quote, pdf_url)
 
-    work = session.work_type.value if session.work_type else "painting"
+    work = session.work_type if session.work_type else "painting"
     summary = (
         f"Quote ready (forwarded enquiry)\n\n"
         f"Work: {work}\n"

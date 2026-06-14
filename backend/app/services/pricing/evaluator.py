@@ -53,7 +53,7 @@ def evaluate_quote(rules: dict, slots: dict) -> EvaluatedQuote:
 
     rate = _lookup_rate(parsed.rate_table, resolved)
 
-    env = {**_numeric_env(resolved), "rate_per_sqft": float(rate)}
+    env = {**_numeric_env(resolved), "base_rate": float(rate)}
     per_unit_base = safe_eval(parsed.base_formula, env)
     # base_formula yields the "per matched combination" amount; we treat its
     # numeric result as the subtotal contribution from the primary line item.
@@ -140,7 +140,7 @@ def _check_range(i: InputDef, value: float) -> None:
 def _lookup_rate(rate_table, resolved: dict) -> Decimal:
     for entry in rate_table:
         if all(resolved.get(k) == v for k, v in entry.conditions.items()):
-            return Decimal(str(entry.rate_per_sqft))
+            return Decimal(str(entry.base_rate))
     raise RateNotFoundError(resolved)
 
 
@@ -152,7 +152,7 @@ def _apply_surcharge(mod: PerUnitSurcharge, resolved: dict) -> Decimal:
     if not _condition_met(mod.condition, resolved):
         return Decimal("0")
     over = Decimal(str(resolved[mod.over_field])) - Decimal(str(mod.over_baseline))
-    per_sqft = Decimal(str(mod.amount_per_sqft_per_extra_unit))
+    per_sqft = Decimal(str(mod.amount_per_extra_unit))
     qty = Decimal(str(resolved[mod.quantity_field]))
     return over * per_sqft * qty
 

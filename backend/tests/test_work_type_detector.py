@@ -1,12 +1,11 @@
 """Tests for WorkTypeDetector."""
 import pytest
 
-from app.db.enums import WorkType
 from app.services.conversation.work_type_detector import WorkTypeDetector
 from app.services.llm.base import LLMError
 from app.services.llm.mock import MockLLMClient
 
-AVAILABLE = [WorkType.painting, WorkType.false_ceiling]
+AVAILABLE = ["painting", "false_ceiling"]
 
 
 def _client(work_type_value: str) -> MockLLMClient:
@@ -18,13 +17,13 @@ def _client(work_type_value: str) -> MockLLMClient:
 def test_detect_painting():
     detector = WorkTypeDetector(_client("painting"))
     result = detector.detect("I want to paint my living room", AVAILABLE, "TestCo")
-    assert result == WorkType.painting
+    assert result == "painting"
 
 
 def test_detect_false_ceiling():
     detector = WorkTypeDetector(_client("false_ceiling"))
     result = detector.detect("Need gypsum board ceiling", AVAILABLE, "TestCo")
-    assert result == WorkType.false_ceiling
+    assert result == "false_ceiling"
 
 
 def test_detect_unclear_returns_none():
@@ -53,8 +52,8 @@ def test_detect_llm_error_returns_none():
 def test_detect_single_work_type_painting():
     # Only painting available — LLM would say painting.
     detector = WorkTypeDetector(_client("painting"))
-    result = detector.detect("hi", [WorkType.painting], "TestCo")
-    assert result == WorkType.painting
+    result = detector.detect("hi", ["painting"], "TestCo")
+    assert result == "painting"
 
 
 def test_detect_with_empty_message():

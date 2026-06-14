@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session as DBSession
 
 from app.api.deps import get_current_contractor, get_db
-from app.db.enums import ApprovalMode, WorkType
+from app.db.enums import ApprovalMode
 from app.db.models import Contractor
 from app.services.llm.base import LLMParseError
 from app.services.llm.factory import get_llm_client
@@ -159,7 +159,7 @@ async def parse_rate_card(
 )
 def save_pricing_config(
     contractor_id: uuid.UUID,
-    work_type: WorkType,
+    work_type: str,
     req: PricingConfigSaveRequest,
     auth_contractor: Contractor = Depends(get_current_contractor),
     db: DBSession = Depends(get_db),

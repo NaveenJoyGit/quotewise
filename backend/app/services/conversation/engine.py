@@ -185,14 +185,14 @@ class ConversationEngine:
         return available, rules_map
 
     def _load_pricing_rules(self, session: SessionModel, contractor: Any) -> dict:
-        from app.db.enums import SessionState, WorkType
+        from app.db.enums import SessionState
 
         # During identifying_scope the work type is not yet known — return empty dict.
         # IdentifyingScopeHandler doesn't need rules; it only needs available_work_types.
         if session.state == SessionState.identifying_scope and session.work_type is None:
             return {}
 
-        work_type = session.work_type or WorkType.painting
+        work_type = session.work_type or "painting"
         contractor_id = (
             contractor.contractor_id
             if hasattr(contractor, "contractor_id")

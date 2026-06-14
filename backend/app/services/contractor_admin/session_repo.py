@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session as DBSession
 
-from app.db.enums import AdminFlowType, AdminSessionState, WorkType
+from app.db.enums import AdminFlowType, AdminSessionState
 from app.db.models import AuditLog, ContractorAdminSession
 from app.services.whatsapp.phone import normalize_phone_e164
 
@@ -40,7 +40,7 @@ def create_session(
     flow_type: AdminFlowType,
     initial_state: AdminSessionState,
     contractor_id: uuid.UUID | None,
-    work_type: WorkType | None,
+    work_type: str | None,
     now: datetime,
     ttl_hours: int,
 ) -> ContractorAdminSession:
@@ -76,7 +76,7 @@ def close_session(session: ContractorAdminSession, state: AdminSessionState) -> 
 def log_pricing_updated(
     db: DBSession,
     contractor_id: uuid.UUID,
-    work_type: WorkType,
+    work_type: str,
     version: int,
 ) -> None:
     db.add(
@@ -85,7 +85,7 @@ def log_pricing_updated(
             event_type="pricing.updated",
             payload={
                 "source": "whatsapp_admin",
-                "work_type": work_type.value,
+                "work_type": work_type,
                 "version": version,
             },
         )

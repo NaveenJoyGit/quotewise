@@ -1,7 +1,7 @@
 """IDENTIFYING_SCOPE handler — detects work type, asks the first slot question."""
 from __future__ import annotations
 
-from app.db.enums import SessionState, WorkType
+from app.db.enums import SessionState
 from app.db.models import Session as SessionModel
 from app.services.conversation.handlers import StateHandler
 from app.services.conversation.question_phraser import QuestionPhraser
@@ -11,8 +11,8 @@ from app.services.pricing.schemas import PricingRules
 from app.services.whatsapp.payload import InboundMessage
 
 _WORK_TYPE_LABELS = {
-    WorkType.painting: "painting",
-    WorkType.false_ceiling: "false ceiling",
+    "painting": "painting",
+    "false_ceiling": "false ceiling",
 }
 
 
@@ -27,7 +27,7 @@ class IdentifyingScopeHandler(StateHandler):
         if work_type is None:
             # Ambiguous — ask buyer to choose and stay in this state.
             labels = " or ".join(
-                _WORK_TYPE_LABELS.get(wt, wt.value) for wt in deps.available_work_types
+                _WORK_TYPE_LABELS.get(wt, wt) for wt in deps.available_work_types
             )
             prefix = "For the buyer's enquiry: " if deps.proxy_mode else ""
             return HandlerResult(
@@ -41,7 +41,7 @@ class IdentifyingScopeHandler(StateHandler):
         # Look up the detected work type's rules from the all-types map, falling back to
         # deps.pricing_rules (which is {} during identifying_scope but populated in tests
         # that pass pricing_rules directly).
-        rules = deps.pricing_rules_by_work_type.get(work_type.value) or deps.pricing_rules
+        rules = deps.pricing_rules_by_work_type.get(work_type) or deps.pricing_rules
         parsed = PricingRules.model_validate(rules)
 
         # Required slots with no default — preserve input order (SPEC §3.2).
@@ -69,12 +69,12 @@ class IdentifyingScopeHandler(StateHandler):
         session: SessionModel,
         inbound: InboundMessage,
         deps: HandlerDeps,
-    ) -> WorkType | None:
+    ) -> str | None:
         available = deps.available_work_types
 
         if not available:
             # Fallback: single-tenant dev with no config loaded yet.
-            return WorkType.painting
+            return "painting"
 
         if len(available) == 1:
             return available[0]

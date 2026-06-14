@@ -7,7 +7,7 @@ from typing import Any, Callable
 
 from pydantic import BaseModel
 
-from app.db.enums import SessionState, WorkType
+from app.db.enums import SessionState
 from app.services.llm.base import LLMClient
 
 
@@ -17,7 +17,7 @@ class HandlerDeps:
     now: Callable[[], datetime]
     business_name: str
     pricing_rules: dict[str, Any]  # raw rules JSONB for the session's current work_type
-    available_work_types: list[WorkType] = field(default_factory=list)
+    available_work_types: list[str] = field(default_factory=list)
     # All active pricing rules keyed by work_type.value — used by IdentifyingScopeHandler
     # to build missing_slots after detecting work type without needing a second DB round-trip.
     pricing_rules_by_work_type: dict[str, Any] = field(default_factory=dict)
@@ -30,7 +30,7 @@ class HandlerResult:
     outbound_text: str
     collected_slots_update: dict[str, Any] = field(default_factory=dict)
     missing_slots: list[str] | None = None  # None = no change
-    work_type: WorkType | None = None       # None = no change
+    work_type: str | None = None       # None = no change
     quote_snapshot: dict[str, Any] | None = None
 
 

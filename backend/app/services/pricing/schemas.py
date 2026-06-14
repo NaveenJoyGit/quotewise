@@ -41,7 +41,7 @@ class InputDef(BaseModel):
 class RateTableEntry(BaseModel):
     model_config = ConfigDict(extra="forbid")
     conditions: dict[str, object] = Field(..., min_length=1)
-    rate_per_sqft: float
+    base_rate: float
 
 
 Op = Literal["gt", "gte", "lt", "lte", "eq"]
@@ -61,8 +61,8 @@ class PerUnitSurcharge(BaseModel):
     condition: ModifierCondition
     over_field: str
     over_baseline: float
-    amount_per_sqft_per_extra_unit: float
-    quantity_field: str = "area_sqft"
+    amount_per_extra_unit: float
+    quantity_field: str = "quantity"
 
 
 class TaxModifier(BaseModel):

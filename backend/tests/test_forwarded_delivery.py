@@ -6,7 +6,7 @@ from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from app.db.enums import SessionSource, SessionState, WorkType
+from app.db.enums import SessionSource, SessionState
 from app.db.models import Session as SessionModel
 from app.services.forwarded_quote.delivery import deliver_to_contractor
 from tests.test_onboarding_api import _VALID_RULES
@@ -24,7 +24,7 @@ def test_deliver_to_contractor_sends_pdf():
         buyer_phone="fwd:abc",
         source=SessionSource.contractor_forward,
         state=SessionState.ready_to_quote,
-        work_type=WorkType.painting,
+        work_type="painting",
         collected_slots={},
         missing_slots=[],
     )

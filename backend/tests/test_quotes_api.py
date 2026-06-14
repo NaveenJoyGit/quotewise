@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from app.db.enums import QuoteStatus, WorkType
+from app.db.enums import QuoteStatus
 from app.main import create_app
 
 
@@ -29,7 +29,7 @@ def _make_quote(**overrides):
     defaults = dict(
         id=uuid.uuid4(),
         buyer_phone="919876543210",
-        work_type=WorkType.painting,
+        work_type="painting",
         subtotal=Decimal("22000.00"),
         gst_amount=Decimal("3960.00"),
         total=Decimal("25960.00"),

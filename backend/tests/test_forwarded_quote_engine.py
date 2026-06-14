@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.db.enums import SessionSource, SessionState, WorkType
+from app.db.enums import SessionSource, SessionState
 from app.db.models import Session as SessionModel
 from app.services.forwarded_quote.engine import ForwardedQuoteEngine
 from app.services.whatsapp.payload import InboundMessage

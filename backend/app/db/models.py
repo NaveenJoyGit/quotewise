@@ -30,7 +30,6 @@ from app.db.enums import (
     QuoteStatus,
     SessionSource,
     SessionState,
-    WorkType,
 )
 
 
@@ -97,9 +96,7 @@ class ContractorAdminSession(Base):
     state: Mapped[AdminSessionState] = mapped_column(
         Enum(AdminSessionState, name="admin_session_state"), nullable=False
     )
-    work_type: Mapped[WorkType | None] = mapped_column(
-        Enum(WorkType, name="work_type"), nullable=True
-    )
+    work_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     draft_rules: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     draft_profile: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     parse_notes: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
@@ -136,9 +133,7 @@ class PricingConfig(Base):
     contractor_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("contractors.id", ondelete="CASCADE"), nullable=False
     )
-    work_type: Mapped[WorkType] = mapped_column(
-        Enum(WorkType, name="work_type"), nullable=False
-    )
+    work_type: Mapped[str] = mapped_column(String(64), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     rules: Mapped[dict] = mapped_column(JSONB, nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
@@ -177,9 +172,7 @@ class Session(Base):
         nullable=False,
         default=SessionState.greeting,
     )
-    work_type: Mapped[WorkType | None] = mapped_column(
-        Enum(WorkType, name="work_type"), nullable=True
-    )
+    work_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     collected_slots: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     missing_slots: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     last_message_at: Mapped[datetime | None] = mapped_column(
@@ -238,9 +231,7 @@ class Quote(Base):
         ForeignKey("contractors.id", ondelete="CASCADE"), nullable=False, index=True
     )
     buyer_phone: Mapped[str] = mapped_column(String(48), nullable=False)
-    work_type: Mapped[WorkType] = mapped_column(
-        Enum(WorkType, name="work_type"), nullable=False
-    )
+    work_type: Mapped[str] = mapped_column(String(64), nullable=False)
     line_items: Mapped[list] = mapped_column(JSONB, nullable=False)
     subtotal: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     gst_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)

@@ -6,7 +6,7 @@ driving the pricing-evaluator unit tests.
 
 PAINTING_RULES: dict = {
     "schema_version": 1,
-    "base_formula": "area_sqft * rate_per_sqft",
+    "base_formula": "area_sqft * base_rate",
     "inputs": [
         {
             "name": "area_sqft",
@@ -44,15 +44,15 @@ PAINTING_RULES: dict = {
         },
     ],
     "rate_table": [
-        {"conditions": {"paint_brand_tier": "basic", "surface_type": "new_wall"}, "rate_per_sqft": 14},
-        {"conditions": {"paint_brand_tier": "basic", "surface_type": "repaint_good_condition"}, "rate_per_sqft": 12},
-        {"conditions": {"paint_brand_tier": "basic", "surface_type": "repaint_damaged"}, "rate_per_sqft": 20},
-        {"conditions": {"paint_brand_tier": "premium", "surface_type": "new_wall"}, "rate_per_sqft": 22},
-        {"conditions": {"paint_brand_tier": "premium", "surface_type": "repaint_good_condition"}, "rate_per_sqft": 20},
-        {"conditions": {"paint_brand_tier": "premium", "surface_type": "repaint_damaged"}, "rate_per_sqft": 28},
-        {"conditions": {"paint_brand_tier": "luxury", "surface_type": "new_wall"}, "rate_per_sqft": 32},
-        {"conditions": {"paint_brand_tier": "luxury", "surface_type": "repaint_good_condition"}, "rate_per_sqft": 30},
-        {"conditions": {"paint_brand_tier": "luxury", "surface_type": "repaint_damaged"}, "rate_per_sqft": 40},
+        {"conditions": {"paint_brand_tier": "basic", "surface_type": "new_wall"}, "base_rate": 14},
+        {"conditions": {"paint_brand_tier": "basic", "surface_type": "repaint_good_condition"}, "base_rate": 12},
+        {"conditions": {"paint_brand_tier": "basic", "surface_type": "repaint_damaged"}, "base_rate": 20},
+        {"conditions": {"paint_brand_tier": "premium", "surface_type": "new_wall"}, "base_rate": 22},
+        {"conditions": {"paint_brand_tier": "premium", "surface_type": "repaint_good_condition"}, "base_rate": 20},
+        {"conditions": {"paint_brand_tier": "premium", "surface_type": "repaint_damaged"}, "base_rate": 28},
+        {"conditions": {"paint_brand_tier": "luxury", "surface_type": "new_wall"}, "base_rate": 32},
+        {"conditions": {"paint_brand_tier": "luxury", "surface_type": "repaint_good_condition"}, "base_rate": 30},
+        {"conditions": {"paint_brand_tier": "luxury", "surface_type": "repaint_damaged"}, "base_rate": 40},
     ],
     "modifiers": [
         {
@@ -61,7 +61,7 @@ PAINTING_RULES: dict = {
             "condition": {"field": "coats", "op": "gt", "value": 2},
             "over_field": "coats",
             "over_baseline": 2,
-            "amount_per_sqft_per_extra_unit": 3,
+            "amount_per_extra_unit": 3,
             "quantity_field": "area_sqft",
         },
         {"name": "gst", "type": "tax", "rate": 0.18},
@@ -78,7 +78,7 @@ PAINTING_RULES: dict = {
 
 FALSE_CEILING_RULES: dict = {
     "schema_version": 1,
-    "base_formula": "area_sqft * rate_per_sqft",
+    "base_formula": "area_sqft * base_rate",
     "inputs": [
         {
             "name": "area_sqft",
@@ -109,15 +109,15 @@ FALSE_CEILING_RULES: dict = {
         },
     ],
     "rate_table": [
-        {"conditions": {"ceiling_type": "grid_ceiling", "finish": "plain"}, "rate_per_sqft": 85},
-        {"conditions": {"ceiling_type": "grid_ceiling", "finish": "cornice"}, "rate_per_sqft": 100},
-        {"conditions": {"ceiling_type": "grid_ceiling", "finish": "curved"}, "rate_per_sqft": 120},
-        {"conditions": {"ceiling_type": "gypsum_board", "finish": "plain"}, "rate_per_sqft": 120},
-        {"conditions": {"ceiling_type": "gypsum_board", "finish": "cornice"}, "rate_per_sqft": 145},
-        {"conditions": {"ceiling_type": "gypsum_board", "finish": "curved"}, "rate_per_sqft": 180},
-        {"conditions": {"ceiling_type": "pop_ceiling", "finish": "plain"}, "rate_per_sqft": 95},
-        {"conditions": {"ceiling_type": "pop_ceiling", "finish": "cornice"}, "rate_per_sqft": 115},
-        {"conditions": {"ceiling_type": "pop_ceiling", "finish": "curved"}, "rate_per_sqft": 155},
+        {"conditions": {"ceiling_type": "grid_ceiling", "finish": "plain"}, "base_rate": 85},
+        {"conditions": {"ceiling_type": "grid_ceiling", "finish": "cornice"}, "base_rate": 100},
+        {"conditions": {"ceiling_type": "grid_ceiling", "finish": "curved"}, "base_rate": 120},
+        {"conditions": {"ceiling_type": "gypsum_board", "finish": "plain"}, "base_rate": 120},
+        {"conditions": {"ceiling_type": "gypsum_board", "finish": "cornice"}, "base_rate": 145},
+        {"conditions": {"ceiling_type": "gypsum_board", "finish": "curved"}, "base_rate": 180},
+        {"conditions": {"ceiling_type": "pop_ceiling", "finish": "plain"}, "base_rate": 95},
+        {"conditions": {"ceiling_type": "pop_ceiling", "finish": "cornice"}, "base_rate": 115},
+        {"conditions": {"ceiling_type": "pop_ceiling", "finish": "curved"}, "base_rate": 155},
     ],
     "modifiers": [
         {"name": "gst", "type": "tax", "rate": 0.18},

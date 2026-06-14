@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.db.enums import MessageDirection, MessageType, SessionState, WorkType
+from app.db.enums import MessageDirection, MessageType, SessionState
 from app.services.conversation.engine import ConversationEngine, _NON_TEXT_REFUSAL
 from app.services.llm.mock import MockLLMClient
 from app.services.pricing.seed_rules import PAINTING_RULES
@@ -86,14 +86,13 @@ def patched_repo(monkeypatch):
     """Returns a namespace of mock functions that replace session_repo calls in the engine.
 
     The db mock is configured so that _load_available_work_types_and_rules returns
-    [WorkType.painting] and {painting: PAINTING_RULES}.
+    ["painting"] and {painting: PAINTING_RULES}.
     """
-    from app.db.enums import WorkType
     from app.db.models import PricingConfig as PC
     from types import SimpleNamespace as NS
 
     # Build a fake PricingConfig row the engine can iterate over.
-    fake_config = NS(work_type=WorkType.painting, rules=PAINTING_RULES)
+    fake_config = NS(work_type="painting", rules=PAINTING_RULES)
 
     mocks = SimpleNamespace(
         resolve_contractor=MagicMock(return_value=_make_contractor()),
@@ -116,7 +115,7 @@ def patched_repo(monkeypatch):
         engine_mod.ConversationEngine,
         "_load_available_work_types_and_rules",
         lambda self, contractor: (
-            [WorkType.painting],
+            ["painting"],
             {"painting": PAINTING_RULES},
         ),
     )
@@ -172,7 +171,7 @@ def test_collecting_inputs_asks_next_question(patched_repo):
         SessionState.collecting_inputs,
         collected={},
         missing=["area_sqft", "surface_type", "paint_brand_tier"],
-        work_type=WorkType.painting,
+        work_type="painting",
     )
     patched_repo.find_or_create_session.return_value = session
     # LLM extracts nothing → re-asks same slot
@@ -188,7 +187,7 @@ def test_collecting_all_slots_triggers_chained_dispatch_to_ready(patched_repo, c
         SessionState.collecting_inputs,
         collected={"area_sqft": 1000, "surface_type": "new_wall"},
         missing=["paint_brand_tier"],
-        work_type=WorkType.painting,
+        work_type="painting",
     )
     patched_repo.find_or_create_session.return_value = session
 
@@ -240,7 +239,7 @@ def test_pending_quote_snapshot_set_after_ready_to_quote(patched_repo, caplog):
         SessionState.collecting_inputs,
         collected={"area_sqft": 1000, "surface_type": "new_wall"},
         missing=["paint_brand_tier"],
-        work_type=WorkType.painting,
+        work_type="painting",
     )
     patched_repo.find_or_create_session.return_value = session
 

@@ -8,7 +8,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from app.db.enums import WorkType
 from app.services.llm.base import LLMClient, LLMError
 
 logger = logging.getLogger(__name__)
@@ -21,13 +20,13 @@ class WorkTypeDetector:
     def detect(
         self,
         buyer_message: str,
-        available_work_types: list[WorkType],
+        available_work_types: list[str],
         business_name: str,
-    ) -> WorkType | None:
+    ) -> str | None:
         """Return the detected WorkType, or None if ambiguous / parse failure."""
         context: dict[str, Any] = {
             "buyer_message": buyer_message,
-            "available_work_types": [wt.value for wt in available_work_types],
+            "available_work_types": available_work_types,
             "business_name": business_name,
         }
         try:
@@ -45,7 +44,7 @@ class WorkTypeDetector:
 
         # Validate the returned string is actually a known work type for this contractor.
         for wt in available_work_types:
-            if wt.value == raw:
+            if wt == raw:
                 logger.info(
                     "work_type.detected",
                     extra={
@@ -60,7 +59,7 @@ class WorkTypeDetector:
             extra={
                 "event_type": "work_type.detection_invalid",
                 "returned": raw,
-                "available": [wt.value for wt in available_work_types],
+                "available": available_work_types,
             },
         )
         return None
