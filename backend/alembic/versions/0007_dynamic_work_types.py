@@ -19,28 +19,13 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # 1. Alter columns from enum to varchar
-    op.alter_column('contractor_admin_sessions', 'work_type',
-               existing_type=sa.Enum('painting', 'false_ceiling', name='work_type'),
-               type_=sa.String(length=64),
-               existing_nullable=True)
-    
-    op.alter_column('pricing_configs', 'work_type',
-               existing_type=sa.Enum('painting', 'false_ceiling', name='work_type'),
-               type_=sa.String(length=64),
-               existing_nullable=False)
-               
-    op.alter_column('sessions', 'work_type',
-               existing_type=sa.Enum('painting', 'false_ceiling', name='work_type'),
-               type_=sa.String(length=64),
-               existing_nullable=True)
-               
-    op.alter_column('quotes', 'work_type',
-               existing_type=sa.Enum('painting', 'false_ceiling', name='work_type'),
-               type_=sa.String(length=64),
-               existing_nullable=False)
+    # Postgres requires an explicit USING clause to cast an enum to varchar
+    op.execute("ALTER TABLE contractor_admin_sessions ALTER COLUMN work_type TYPE VARCHAR(64) USING work_type::text;")
+    op.execute("ALTER TABLE pricing_configs ALTER COLUMN work_type TYPE VARCHAR(64) USING work_type::text;")
+    op.execute("ALTER TABLE sessions ALTER COLUMN work_type TYPE VARCHAR(64) USING work_type::text;")
+    op.execute("ALTER TABLE quotes ALTER COLUMN work_type TYPE VARCHAR(64) USING work_type::text;")
 
-    # 2. Drop the enum type from postgres
+    # Drop the enum type from postgres
     op.execute("DROP TYPE IF EXISTS work_type CASCADE;")
 
 

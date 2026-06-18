@@ -7,6 +7,7 @@ export interface ContractorCreateRequest {
   whatsapp_link_slug: string;
   gst_number?: string;
   approval_mode?: string;
+  wa_phone_number_id?: string;
 }
 
 export interface ContractorResponse {

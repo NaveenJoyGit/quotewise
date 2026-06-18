@@ -27,6 +27,7 @@ export default function StepOne({ onComplete }: Props) {
     whatsapp_link_slug: "",
     gst_number: "",
     approval_mode: "always_approve",
+    wa_phone_number_id: "",
   });
   const [slugEdited, setSlugEdited] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -56,6 +57,7 @@ export default function StepOne({ onComplete }: Props) {
         whatsapp_link_slug: form.whatsapp_link_slug,
         gst_number: form.gst_number || undefined,
         approval_mode: form.approval_mode,
+        wa_phone_number_id: form.wa_phone_number_id || undefined,
       };
       const contractor = await createContractor(payload);
       onComplete(contractor);
@@ -138,6 +140,22 @@ export default function StepOne({ onComplete }: Props) {
           className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           placeholder="22AAAAA0000A1Z5"
         />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Twilio WA Phone Number ID (optional)
+        </label>
+        <input
+          name="wa_phone_number_id"
+          value={form.wa_phone_number_id}
+          onChange={handleChange}
+          className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          placeholder="+14155238886"
+        />
+        <p className="mt-1 text-xs text-gray-500">
+          The Twilio Sandbox "To" number (E.164 format)
+        </p>
       </div>
 
       {error && (

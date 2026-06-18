@@ -1,5 +1,16 @@
 # Changelog
 
+## FR-004 — Optional Twilio WA Number UI Setup (2026-06-18)
+
+Goal: Allow contractors to configure their Twilio WhatsApp Number ID directly from the UI during onboarding.
+
+### What was done
+
+- **Frontend Onboarding UI** — Added an optional "Twilio WA Phone Number ID" field to `StepOne.tsx` so users can link their Twilio sandbox/production number immediately upon signing up instead of via a backend script.
+- **Frontend API Client** — Updated `ContractorCreateRequest` type and payload mapping in `onboarding-api.ts` and `StepOne.tsx` to include `wa_phone_number_id`.
+
+---
+
 ## FR-003 — Flexible Work Types (2026-06-13)
 
 Goal: Overhaul QuoteWise to support dynamic, flexible work types (e.g. electrical, plumbing, carpentry) instead of hardcoded painting and false ceiling.

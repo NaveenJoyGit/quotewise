@@ -181,7 +181,7 @@ class ConversationEngine:
             .all()
         )
         available = [c.work_type for c in configs]
-        rules_map = {c.work_type.value: c.rules for c in configs}
+        rules_map = {c.work_type: c.rules for c in configs}
         return available, rules_map
 
     def _load_pricing_rules(self, session: SessionModel, contractor: Any) -> dict:
